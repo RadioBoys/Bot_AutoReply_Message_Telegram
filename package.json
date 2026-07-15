@@ -1,0 +1,27 @@
+{
+  "name": "bot_reply_telegram",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/indexBotAlbum.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "input": "^1.0.1",
+    "telegraf": "^4.16.3",
+    "telegram": "^2.26.22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
