@@ -18,8 +18,9 @@ interface NyanContext extends Context {
 interface Album {
     id: number;
     title: string;
-    linkAlbum?: string[]; // 
+    linkAlbum?: string[];
     path: string;
+    fileid?: string;
     type: 'photo' | 'video';
     tags: string[];
     price: string;
@@ -152,7 +153,7 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
         }
 
         // 2. Đọc dữ liệu user từ database để lấy danh sách album đã sở hữu
-        const users = loadUsersData(); 
+        const users = loadUsersData();
         const userProfile = users[customerId.toString()];
         const purchasedIds: number[] = userProfile?.purchasedAlbums || [];
 
@@ -169,7 +170,7 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
         }
 
         // 4. Tạo tin nhắn văn bản thuần không parse_mode tránh lỗi ký tự đặc biệt
-        const message = 
+        const message =
             `👤 Khách hàng: ${fullName}\n` +
             `🏷️ Username: ${username}\n` +
             `🆔 ID: ${customerId}\n` +
@@ -188,28 +189,34 @@ bot.start(async (ctx) => {
     // 🛡️ KIỂM TRA QUYỀN ADMIN
     const hasPermission = await isAdminOrPrivate(ctx);
     if (!hasPermission) {
-        // Nếu không phải admin, bot im lặng hoàn toàn (hoặc dùng ctx.reply nếu muốn nhắc nhở)
         return;
     }
 
     // 🌟 THÊM TYPING
     await ctx.replyWithChatAction('upload_photo').catch(() => { });
-    return ctx.replyWithPhoto(
-        { source: './img/Banner.jpg' },
-        {
-            caption: 'Hi anh. Anh mún chọn gì nè??',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
-                    [{ text: '👙Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
-                    [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
-                    [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
-                    [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
-                    [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
-                ]
-            }
+
+    // NyanChan: Thêm Logic try...catch để fallback Banner file_id
+    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
+    const sendOptions = {
+        caption: 'Hi anh. Anh mún chọn gì nè??',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
+                [{ text: '👙Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
+                [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
+                [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
+                [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
+                [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
+            ]
         }
-    );
+    };
+
+    try {
+        return await ctx.replyWithPhoto(bannerFileId, sendOptions);
+    } catch (error) {
+        console.log("⚠️ Gửi Banner bằng file_id thất bại, dùng fallback ổ cứng...");
+        return await ctx.replyWithPhoto({ source: './img/Banner.jpg' }, sendOptions);
+    }
 });
 
 const getMainMenuKeyboard = () => ({
@@ -225,15 +232,24 @@ const getMainMenuKeyboard = () => ({
 
 bot.action('view_services', async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
-    // 🌟 THÊM TYPING
     await ctx.replyWithChatAction('upload_photo').catch(() => { });
+
+    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
 
     try {
         await ctx.editMessageMedia({
             type: 'photo',
+            media: bannerFileId
+        });
+    } catch (error) {
+        console.log("⚠️ Lỗi file_id menu view_services, dùng fallback ổ cứng...");
+        await ctx.editMessageMedia({
+            type: 'photo',
             media: { source: fs.createReadStream('./img/Banner.jpg') }
         });
+    }
 
+    try {
         await ctx.editMessageCaption('Hi anh. Anh mún chọn gì nè??', {
             reply_markup: getMainMenuKeyboard()
         });
@@ -244,7 +260,6 @@ bot.action('view_services', async (ctx) => {
 
 bot.action('check_balance', async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
-    // 🌟 THÊM TYPING
     await ctx.replyWithChatAction('typing').catch(() => { });
 
     const chatId = ctx.chat?.id;
@@ -268,6 +283,7 @@ bot.action(/view(.+)/, async (ctx) => {
     let fileInfo = {
         type: 'photo' as 'photo' | 'video',
         path: './img/Banner.jpg',
+        file_id: 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E',
         text: 'Hi anh. Anh mún chọn gì nè??',
         keyboard: {
             inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
@@ -277,8 +293,9 @@ bot.action(/view(.+)/, async (ctx) => {
     switch (service) {
         case 'Album':
             fileInfo = {
-                type: 'photo',
-                path: './img/Banner.jpg',
+                type: 'video', // Đã chuyển thành video để dùng với Album.MP4
+                path: './img/Album.MP4',
+                file_id: 'BAACAgUAAyEFAAMBAAE_PMoAAy1qXyeHb6sz7PLRLnWDaq2Cm_rnPQACICIAAvLg-FYZKAZwW-jtoj0E',
                 text: 'Anh muốn xem thể loại album nào của bé? 👉👈',
                 keyboard: {
                     inline_keyboard: [
@@ -308,23 +325,23 @@ bot.action(/view(.+)/, async (ctx) => {
         case 'Pantsu':
             fileInfo.type = 'video';
             fileInfo.path = './img/Pantsu.MP4';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAy9qXyeKMWJSDHBx4UEP1-vN8aKj6AACIiIAAvLg-FavrfbPpXrBpz0E';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi. \n\nAnh xem trong @nyanchanbikini rồi nhắn cho Nyan nhé!';
             break;
         case 'Juice':
             fileInfo.type = 'video';
             fileInfo.path = './img/Juice.MP4';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAy5qXyeHYAkB_EI-MSEfuwbYA7bbEQACISIAAvLg-FaSOLdvvwOVaj0E';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi.';
             break;
         case 'Sextoy':
             fileInfo.type = 'video';
             fileInfo.path = './img/Sextoy.MP4';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAzBqXyeM9pX5GN5Gw5NJwtBcETR_gwACIyIAAvLg-FYsGV88tpkxyT0E';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi. \n\nAnh xem trong @shopsextoy2 rồi nhắn cho Nyan nhé!';
             break;
     }
 
-    if (!fs.existsSync(fileInfo.path)) return ctx.reply("File không tồn tại!");
-
-    // 🌟 THÊM TYPING DỰA TRÊN LOẠI FILE ĐỊNH GỬI
     if (fileInfo.type === 'video') {
         await ctx.replyWithChatAction('upload_video').catch(() => { });
     } else {
@@ -334,9 +351,18 @@ bot.action(/view(.+)/, async (ctx) => {
     try {
         await ctx.editMessageMedia({
             type: fileInfo.type,
+            media: fileInfo.file_id
+        });
+    } catch (error) {
+        console.log(`⚠️ Lỗi file_id cho menu ${service}, dùng fallback ổ cứng...`);
+        if (!fs.existsSync(fileInfo.path)) return ctx.reply("File không tồn tại trên cả Cloud lẫn ổ cứng!");
+        await ctx.editMessageMedia({
+            type: fileInfo.type,
             media: { source: fs.createReadStream(fileInfo.path) }
         });
+    }
 
+    try {
         await ctx.editMessageCaption(fileInfo.text, {
             reply_markup: fileInfo.keyboard
         });
@@ -345,12 +371,11 @@ bot.action(/view(.+)/, async (ctx) => {
     }
 });
 
-// Handle category selection (e.g., Masturbation, BDSM)
+// NyanChan: HÀM LIỆT KÊ ALBUM THEO TAG ĐÃ ĐƯỢC LÀM MỚI 100%
 bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
     } catch (e) { }
-    // 🌟 THÊM TYPING
     await ctx.replyWithChatAction('typing').catch(() => { });
 
     const selectedTag = ctx.match[1];
@@ -393,12 +418,6 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
         const isLastItemOnPage = currentIndex === pageAlbums.length - 1;
         currentIndex++;
 
-        if (!fs.existsSync(album.path)) {
-            const failMsg = await ctx.reply(`${album.title} is currently under maintenance...`);
-            newSentMessageIds.push(failMsg.message_id);
-            continue;
-        }
-
         const captionText =
             `🎥 *${album.title}*\n\n` +
             `📝 *Description:* ${album.description}\n` +
@@ -425,32 +444,46 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
             inlineKeyboard.push([{ text: '🔙 Trở lại mục album !', callback_data: 'viewAlbum' }]);
         }
 
+        const sendOptions: any = {
+            caption: captionText,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: inlineKeyboard }
+        };
+
         try {
             let sentMsg;
-            if (album.type === 'video') {
-                await ctx.replyWithChatAction('upload_video').catch(() => { });
-                sentMsg = await ctx.replyWithVideo(
-                    { source: fs.createReadStream(album.path) },
-                    {
-                        caption: captionText,
-                        parse_mode: 'Markdown',
-                        reply_markup: { inline_keyboard: inlineKeyboard }
+            const actionType = album.type === 'video' ? 'upload_video' : 'upload_photo';
+            await ctx.replyWithChatAction(actionType).catch(() => { });
+
+            try {
+                // Ưu tiên 1: Gửi bằng mã fileid siêu tốc
+                if (!album.fileid) throw new Error("Chưa có mã fileid");
+
+                if (album.type === 'video') {
+                    sentMsg = await ctx.replyWithVideo(album.fileid, sendOptions);
+                } else {
+                    sentMsg = await ctx.replyWithPhoto(album.fileid, sendOptions);
+                }
+            } catch (fallbackError) {
+                // Ưu tiên 2: Xử lý dự phòng bằng cách đọc file ổ cứng
+                console.log(`⚠️ Lỗi gửi file_id của Album ID ${album.id}, fallback qua ổ cứng...`);
+
+                if (!fs.existsSync(album.path)) {
+                    sentMsg = await ctx.reply(`${album.title} is currently under maintenance...`);
+                } else {
+                    if (album.type === 'video') {
+                        sentMsg = await ctx.replyWithVideo({ source: fs.createReadStream(album.path) }, sendOptions);
+                    } else {
+                        sentMsg = await ctx.replyWithPhoto({ source: fs.createReadStream(album.path) }, sendOptions);
                     }
-                );
-            } else {
-                await ctx.replyWithChatAction('upload_photo').catch(() => { });
-                sentMsg = await ctx.replyWithPhoto(
-                    { source: fs.createReadStream(album.path) },
-                    {
-                        caption: captionText,
-                        parse_mode: 'Markdown',
-                        reply_markup: { inline_keyboard: inlineKeyboard }
-                    }
-                );
+                }
             }
-            newSentMessageIds.push(sentMsg.message_id);
+
+            if (sentMsg) {
+                newSentMessageIds.push(sentMsg.message_id);
+            }
         } catch (error) {
-            console.error(`Lỗi khi gửi album ID ${album.id}:`, error);
+            console.error(`Lỗi nghiêm trọng khi xử lý gửi album ID ${album.id}:`, error);
         }
     }
 
@@ -460,7 +493,6 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
 // --- XỬ LÝ HÀNH ĐỘNG TẠO ĐƠN HÀNG KHI KHÁCH ẤN MUA ---
 bot.action(/buy_album_(.+)/, async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
-    // 🌟 THÊM TYPING
     await ctx.replyWithChatAction('typing').catch(() => { });
 
     const albumIdStr = ctx.match[1];
@@ -479,7 +511,6 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     const chatId = ctx.chat?.id;
     if (!chatId) return ctx.reply("Không tìm thấy session chat của anh!");
 
-    // Xóa các tin nhắn album không được chọn để tránh tràn khung chat
     const cbQuery = ctx.callbackQuery as any;
     const clickedMessageId = cbQuery?.message?.message_id;
 
@@ -526,30 +557,27 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
         const remainingBalance = updateUserBalance(chatId, -albumPriceNum);
         addPurchasedAlbum(chatId, albumId);
 
-        // 🌟 TÍNH NĂNG MỚI: Trả link trực tiếp khi mua bằng số dư ví
         const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
         const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
         const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
         const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
         await ctx.reply(
-            `🎉 *MUA THÀNH CÔNG BẰNG VÍ SỐ DƯ!* \n\n` +
+            `🎉 <b>MUA THÀNH CÔNG BẰNG VÍ SỐ DƯ!</b> \n\n` +
             `Số dư ví của anh đã tự động khấu trừ ${albumPriceNum.toLocaleString()}đ.\n` +
-            `💳 Số dư hiện tại còn lại: *${remainingBalance.toLocaleString()}đ*.\n\n` +
-            `🎁 *Link Album của anh đây ạ:*\n` +
+            `💳 Số dư hiện tại còn lại: <b>${remainingBalance.toLocaleString()}đ</b>.\n\n` +
+            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
             `🔗 Link 1: ${link1Text}\n` +
             `🔗 Link 2: ${link2Text}\n\n` +
             `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'HTML' } // Đổi Markdown thành HTML
         );
 
-        // 🔔 GỬI BÁO CÁO CỘNG DỒN CHO ADMIN
         const userFirstName = ctx.from?.first_name || "Không rõ";
         const userLastName = ctx.from?.last_name || "";
         const fullName = `${userFirstName} ${userLastName}`.trim();
         const username = ctx.from?.username ? `@${ctx.from.username}` : "Không có";
-        
-        // Gọi hàm gửi báo cáo (sẽ tự động đọc dữ liệu cộng dồn từ file JSON vừa lưu)
+
         await sendPurchaseReportToAdmin(chatId, fullName, username);
 
         return;
@@ -610,7 +638,6 @@ const app = express();
 app.use(express.json());
 
 app.post('/webhook/bank', async (req, res) => {
-    // Trả phản hồi ngay lập tức cho SePay để tránh SePay gửi lại nhiều lần (gây trùng đơn)
     res.status(200).json({ success: true });
 
     try {
@@ -620,7 +647,6 @@ app.post('/webhook/bank', async (req, res) => {
 
         if (!content) return;
 
-        // Quét trong danh sách Users tìm người giữ mã đơn khớp
         const users = loadUsersData();
         let matchedChatId: string | null = null;
         let matchedOrder: PendingOrderInfo | null = null;
@@ -645,17 +671,12 @@ app.post('/webhook/bank', async (req, res) => {
             let rP = targetAlbum.price.toLowerCase().trim();
             let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
 
-            // Bước 1: Nạp toàn bộ số tiền vào ví trước
             const newTotalBalance = updateUserBalance(customerChatId, actualPaid);
 
             if (newTotalBalance >= albumPrice) {
-                // ========================================================
-                // TRƯỜNG HỢP 1: ĐỦ/THỪA TIỀN (XỬ LÝ THÀNH CÔNG VÀ TRẢ LINK)
-                // ========================================================
                 const remainingBalance = updateUserBalance(customerChatId, -albumPrice);
                 addPurchasedAlbum(customerChatId, targetAlbumId);
 
-                // 🛡️ CHỐNG CRASH: Xóa tin nhắn QR code cũ (Bọc try...catch riêng)
                 if (qrMessageId) {
                     try {
                         await bot.telegram.deleteMessage(customerChatId, qrMessageId);
@@ -664,7 +685,6 @@ app.post('/webhook/bank', async (req, res) => {
                     }
                 }
 
-                // 🛡️ CHỐNG CRASH: Vòng lặp xóa sạch các tin nhắn cảnh báo thiếu tiền trước đó
                 for (const warnMsgId of warnMessageIds) {
                     try {
                         await bot.telegram.deleteMessage(customerChatId, warnMsgId);
@@ -674,34 +694,34 @@ app.post('/webhook/bank', async (req, res) => {
                     }
                 }
 
-                // Lấy thông tin link album
                 const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
                 const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
                 const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
                 const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-                // 🛡️ CHỐNG CRASH CHÍ MẠNG: Gửi tin nhắn chứa link cho khách (Nếu khách block bot, bot vẫn không sập)
                 try {
-                    await bot.telegram.sendMessage(customerChatId,
-                        `🎉 *Thanh toán thành công!* Pé đã nhận được tiền rồi ạ. \n\n` +
-                        `ℹ️ Mã hóa đơn: \`${matchedOrder.orderCode}\`\n` +
-                        `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
-                        `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
-                        `💳 Số dư ví tích lũy còn lại: *${remainingBalance.toLocaleString()}đ* \n\n` +
-                        `🎁 *Link Album của anh đây ạ:*\n` +
-                        `🔗 Link 1: ${link1Text}\n` +
-                        `🔗 Link 2: ${link2Text}\n\n` +
-                        `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-                        { parse_mode: 'Markdown' }
-                    );
+                    try {
+                        await bot.telegram.sendMessage(customerChatId,
+                            `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
+                            `ℹ️ Mã hóa đơn: <code>${matchedOrder.orderCode}</code>\n` +
+                            `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
+                            `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
+                            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                            `🔗 Link 1: ${link1Text}\n` +
+                            `🔗 Link 2: ${link2Text}\n\n` +
+                            `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
+                            { parse_mode: 'HTML' } // Đổi Markdown thành HTML
+                        );
+                    } catch (err: any) {
+                        console.error(`🚨 [CRITICAL] Không thể gửi LINK ALBUM cho khách ${customerChatId}. Lý do: ${err?.message || err}`);
+                    }
                 } catch (err: any) {
                     console.error(`🚨 [CRITICAL] Không thể gửi LINK ALBUM cho khách ${customerChatId}. Lý do: ${err?.message || err}`);
                 }
 
-                // 🔔 GỬI BÁO CÁO CỘNG DỒN CHO ADMIN KHI THANH TOÁN QUA BANK THÀNH CÔNG
                 await sendPurchaseReportToAdmin(customerChatId);
 
-                // Xoá sạch đơn chờ thanh toán bằng cách set về null
                 const freshUsers = loadUsersData();
                 if (matchedChatId) {
                     const userKey = matchedChatId;
@@ -713,13 +733,9 @@ app.post('/webhook/bank', async (req, res) => {
 
                 console.log(`[Thành Công] Đã xử lý đơn thành công: ${matchedOrder.orderCode}. Ví dư còn: ${remainingBalance}đ`);
             } else {
-                // ========================================================
-                // TRƯỜNG HỢP 2: THIẾU TIỀN
-                // ========================================================
                 const shortAmount = albumPrice - newTotalBalance;
 
                 let sentWarnMsg = null;
-                // 🛡️ CHỐNG CRASH: Gửi cảnh báo thiếu tiền (Bọc try...catch riêng)
                 try {
                     sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
                         `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN* \n\n` +
@@ -733,7 +749,6 @@ app.post('/webhook/bank', async (req, res) => {
                     console.error(`[Webhook Error] Không thể gửi tin nhắn cảnh báo thiếu tiền cho khách ${customerChatId}:`, err?.message || err);
                 }
 
-                // LƯU ID TIN NHẮN CẢNH BÁO VÀO MẢNG ĐỂ LẦN SAU XÓA (Chỉ lưu nếu gửi tin nhắn thành công)
                 if (sentWarnMsg) {
                     const freshUsers = loadUsersData();
                     if (matchedChatId) {
@@ -781,7 +796,6 @@ bot.catch(async (err: any, ctx: Context) => {
 // 🌟 TÍNH NĂNG MỚI: NHẬN LỆNH /c TRONG GROUP ĐỂ CHAT LẠI NỘI DUNG
 bot.command('c', async (ctx) => {
     try {
-        // 🛡️ KIỂM TRA QUYỀN ADMIN
         const hasPermission = await isAdminOrPrivate(ctx);
         if (!hasPermission) {
             if (ctx.chat?.type !== 'private') {
@@ -791,11 +805,9 @@ bot.command('c', async (ctx) => {
         }
 
         const messageText = ctx.message.text;
-
-        // 1. Lấy nội dung cần chat phía sau lệnh /c
         const content = messageText.replace(/^\/c(@\w+)?\s*/, '').trim();
         if (!content) {
-            try { await ctx.deleteMessage(); } catch (e) { } // Xóa lệnh gõ sai
+            try { await ctx.deleteMessage(); } catch (e) { }
 
             const alertMsg = await ctx.reply("/c <Nội dung cần chat> nha ^^");
             setTimeout(async () => {
@@ -804,17 +816,14 @@ bot.command('c', async (ctx) => {
             return;
         }
 
-        // 2. Kiểm tra xem người dùng có đang bấm "Reply" ai đó không
         const replyToMessage = ctx.message.reply_to_message;
 
-        // 3. Tiến hành xóa tin nhắn chứa lệnh /c của người dùng trước để group luôn sạch đẹp
         try {
             await ctx.deleteMessage();
         } catch (e) {
             console.log("[Group Error] Bot thiếu quyền Admin (Delete Message) trong nhóm.");
         }
 
-        // 4. Phân luồng xử lý:
         if (replyToMessage) {
             await ctx.reply(content, {
                 reply_parameters: { message_id: replyToMessage.message_id }
@@ -828,6 +837,28 @@ bot.command('c', async (ctx) => {
     }
 });
 
+bot.command('getid', (ctx) => {
+    const ADMIN_IDS = [8054465558, 8973528593];
+
+    const userId = ctx.from.id;
+
+    if (!ADMIN_IDS.includes(userId)) {
+        console.log(`[Cảnh Báo] Người lạ cố gắng dùng lệnh /getid. ID của họ là: ${userId}`);
+        return;
+    }
+
+    const repliedMsg = (ctx.message as any).reply_to_message;
+    if (!repliedMsg) return ctx.reply("Bấy bì phải Reply (trả lời) một bức ảnh hoặc video nha!");
+
+    if (repliedMsg.photo) {
+        const photo = repliedMsg.photo[repliedMsg.photo.length - 1];
+        return ctx.reply(`📸 ID Ảnh:\n\n<code>${photo.file_id}</code>`, { parse_mode: 'HTML' });
+    } else if (repliedMsg.video) {
+        return ctx.reply(`🎥 ID Video:\n\n<code>${repliedMsg.video.file_id}</code>`, { parse_mode: 'HTML' });
+    } else {
+        return ctx.reply("Đây hông phải ảnh hay video ba ơi!");
+    }
+});
 
 bot.launch();
 console.log('NyanBot (TypeScript) đang chạy...');
