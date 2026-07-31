@@ -212,11 +212,9 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
 // Bắt các lỗi không được xử lý (Uncaught Exceptions)
 process.on('uncaughtException', (err) => {
     console.error('🔥 [Fatal Error] Uncaught Exception:', err);
-    // Lưu log ra file hoặc thông báo, nhưng không để tắt bot
 });
 
 // Bắt các lỗi Promise bị từ chối (Unhandled Rejections)
 process.on('unhandledRejection', (reason, promise) => {
     console.error('⚠️ [Warning] Unhandled Rejection at:', promise, 'reason:', reason);
-    // Tương tự, log lại để fix sau chứ không sập app
 });

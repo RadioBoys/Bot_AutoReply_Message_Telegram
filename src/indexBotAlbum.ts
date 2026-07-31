@@ -2,7 +2,7 @@ import { Telegraf, Context, Markup } from 'telegraf';
 // import { GoogleGenerativeAI } from '@google/generative-ai';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import express from 'express'; // Nhớ cài đặt: npm install express @types/express
+import express from 'express'; 
 
 dotenv.config();
 
@@ -420,7 +420,7 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
 
         const captionText =
             `🎥 *${album.title}*\n\n` +
-            `📝 *Description:* ${album.description}\n` +
+            `📝 *Description:* ${album.description}\n\n` +
             `💰 *Price:* ${album.price}`;
 
         const inlineKeyboard: any[][] = [
@@ -860,6 +860,27 @@ bot.command('getid', (ctx) => {
     }
 });
 
+bot.on('message', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
+    try {
+        // 1. Lập tức xóa tin nhắn văn bản lôm côm mà người dùng vừa gõ
+        setTimeout(async () => {
+            await ctx.deleteMessage();
+        }, 5000);
+
+        // 2. (Tùy chọn) Gửi một thông báo nhắc nhở nhẹ nhàng
+        const warningMsg = await ctx.reply('⚠️ Anh chỉ cần thao thao tác qua NÚT BẤM bên trên thui ạ ❤️!');
+
+        // 3. (Tùy chọn) Tự động xóa luôn thông báo nhắc nhở sau 3 giây để khung chat luôn sạch bóng
+        setTimeout(() => {
+            ctx.telegram.deleteMessage(ctx.chat.id, warningMsg.message_id).catch(() => { });
+        }, 5000);
+
+    } catch (error) {
+        console.log('Lỗi khi dọn dẹp tin nhắn rác:', error);
+    }
+});
+
 bot.launch();
 console.log('NyanBot (TypeScript) đang chạy...');
 
@@ -869,6 +890,23 @@ app.listen(PORT, () => {
     console.log(`Webhook server của SePay đang lắng nghe tại port ${PORT}...`);
 });
 
+// =====================================================================
+// 🛡️ HỆ THỐNG BẤT TỬ: CHỐNG CRASH NODE.JS TOÀN CỤC (ANTI-CRASH)
+// =====================================================================
+
+// Bắt các lỗi văng ra ngoài mà chưa có try...catch
+process.on('uncaughtException', (err) => {
+    console.error('🚨 [Anti-Crash] Bắt được lỗi chưa xử lý (uncaughtException):', err);
+    // Bỏ qua lỗi và tiếp tục chạy, tuyệt đối không sập bot
+});
+
+// Bắt các lỗi Promise bị từ chối (thường do gọi API thất bại hoặc thiếu await)
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🚨 [Anti-Crash] Lỗi Promise từ chối (unhandledRejection) tại:', promise, 'Lý do:', reason);
+    // Bỏ qua lỗi và tiếp tục chạy
+});
+
 // Xử lý thoát
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
