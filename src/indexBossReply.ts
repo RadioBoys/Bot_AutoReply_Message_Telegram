@@ -173,7 +173,7 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
         try {
             if (userText === '1' || /album|ảnh|vợ|dâm|alb|mua|xem|clip/i.test(textLower)) {
                 await client.sendMessage(senderId, { 
-                    message: "📸 **Thông tin Album:**\nĐây là bộ album ảnh/video cực dâm đãng của con vợ tôi. Bạn có thể xem tại đây: @albumsalekhachviet" 
+                    message: "📸 **Thông tin Album:**\nĐây là bộ album ảnh/video cực dâm đãng của con vợ tôi. Bạn có thể xem tại đây: @NyanAutoReplyBot" 
                 });
                 return;
             } 
