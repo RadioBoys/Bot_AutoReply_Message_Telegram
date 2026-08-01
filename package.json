@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.20.2",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   }
