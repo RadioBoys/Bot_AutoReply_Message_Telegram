@@ -8,6 +8,44 @@ dotenv.config();
 
 const bot = new Telegraf<NyanContext>(process.env.BOT_TOKEN as string);
 const GROUP_NOTI_PAYMENT = process.env.GROUP_NOTI_PAYMENT ? Number(process.env.GROUP_NOTI_PAYMENT) : null;
+const adminAddingAlbum = new Set<number>();
+const adminEditingAlbum = new Set<number>();
+const ADMIN_IDS = process.env.ADMIN_IDS ? process.env.ADMIN_IDS.split(',').map(Number) : [];
+
+async function addNewAlbum(
+    title: string,
+    links: string[],
+    fileId: string,
+    type: string,
+    tags: string[],
+    price: string,
+    description: string
+): Promise<boolean> {
+    try {
+        const query = `
+            INSERT INTO albums (title, link_album, path, fileid, type, tags, price, description)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `;
+
+        await pool.query(query, [
+            title,
+            JSON.stringify(links), // Giữ nguyên JSON vì cột link_album là kiểu JSON
+            '',
+            fileId,
+            type,
+            tags,                  // THÁO BỎ JSON.stringify Ở ĐÂY (VÌ CỘT NÀY LÀ MẢNG TEXT[])
+            price,
+            description
+        ]);
+
+        // Load lại bộ nhớ đệm cache mảng albums ngay lập tức
+        await loadAllAlbumsData();
+        return true;
+    } catch (error) {
+        console.error("Lỗi khi thêm album vào DB:", error);
+        return false;
+    }
+}
 
 interface NyanContext extends Context {
 }
@@ -210,7 +248,7 @@ async function addUserPurchased(userId: number, albumId: number, price: number) 
         const query = `
         INSERT INTO users_purchased (user_id, album_id, price, purchased_at)
         VALUES ($1, $2, $3, NOW());`;
-        
+
         await pool.query(query, [userId, albumId, price]);
     } catch (error) {
         console.error(error);
@@ -311,11 +349,11 @@ bot.action('check_balance', async (ctx) => {
 
     const balance = await getUserBalance(chatId);
     let purchasedCount = 0;
-    
+
     try {
         const countResult = await pool.query('SELECT COUNT(*) FROM users_purchased WHERE user_id = $1', [chatId]);
         purchasedCount = Number(countResult.rows[0].count);
-    } catch(e) { }
+    } catch (e) { }
 
     await ctx.reply(`💳 *VÍ TÍCH LŨY CỦA ANH* \n\nSố dư ví hiện tại: *${balance.toLocaleString()}đ*\n📦 Album đã mua thành công: *${purchasedCount}*\n\n_(Tiền thừa khi chuyển khoản sai cấu trúc hoặc dư sẽ tự động nạp thẳng vào ví này để trừ vào các đơn hàng sau!)_`, { parse_mode: 'Markdown' });
 });
@@ -340,7 +378,7 @@ bot.action(/view(.+)/, async (ctx) => {
     switch (service) {
         case 'Album':
             fileInfo = {
-                type: 'video', 
+                type: 'video',
                 path: './img/Album.MP4',
                 file_id: 'BAACAgUAAyEFAAMBAAE_PMoAAy1qXyeHb6sz7PLRLnWDaq2Cm_rnPQACICIAAvLg-FYZKAZwW-jtoj0E',
                 text: 'Anh muốn xem thể loại album nào của bé? 👉👈',
@@ -572,7 +610,7 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     try {
         const checkQuery = await pool.query('SELECT 1 FROM users_purchased WHERE user_id = $1 AND album_id = $2', [chatId, albumId]);
         if (checkQuery.rows.length > 0) alreadyPurchased = true;
-    } catch(e) {}
+    } catch (e) { }
 
     if (alreadyPurchased) {
         return ctx.reply(`🎉 Album *"${targetAlbum.title}"* này anh đã mua và sở hữu rồi ạ!`, { parse_mode: 'Markdown' });
@@ -595,7 +633,7 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
     if (currentBalance >= albumPriceNum) {
         const remainingBalance = await updateUserBalance(chatId, -albumPriceNum);
-        
+
         await addUserPurchased(chatId, albumId, albumPriceNum);
 
         const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
@@ -611,7 +649,7 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
             `🔗 Link 1: ${link1Text}\n` +
             `🔗 Link 2: ${link2Text}\n\n` +
             `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-            { parse_mode: 'HTML' } 
+            { parse_mode: 'HTML' }
         );
 
         const userFirstName = ctx.from?.first_name || "Không rõ";
@@ -697,7 +735,7 @@ app.post('/webhook/bank', async (req, res) => {
 
             if (newTotalBalance >= albumPrice) {
                 const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
-                
+
                 await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
 
                 if (qrMessageId) {
@@ -730,7 +768,7 @@ app.post('/webhook/bank', async (req, res) => {
                         `🔗 Link 1: ${link1Text}\n` +
                         `🔗 Link 2: ${link2Text}\n\n` +
                         `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-                        { parse_mode: 'HTML' } 
+                        { parse_mode: 'HTML' }
                     );
                 } catch (err: any) {
                     console.error(err);
@@ -766,6 +804,9 @@ app.post('/webhook/bank', async (req, res) => {
     }
 });
 
+// ------------------------------
+// Listion slash /c, /getid, /addalbum, /editalbum, /searchalbum commands
+// ------------------------------
 bot.command('c', async (ctx) => {
     try {
         const hasPermission = await isAdminOrPrivate(ctx);
@@ -809,7 +850,6 @@ bot.command('c', async (ctx) => {
 });
 
 bot.command('getid', (ctx) => {
-    const ADMIN_IDS = [8054465558, 8973528593];
 
     const userId = ctx.from.id;
 
@@ -828,6 +868,296 @@ bot.command('getid', (ctx) => {
     } else {
         return ctx.reply("Đây hông phải ảnh hay video ba ơi!");
     }
+});
+
+bot.command('addalbum', async (ctx) => {
+    const userId = ctx.from.id;
+
+    // Chỉ Admin mới được dùng lệnh này
+    if (!ADMIN_IDS.includes(userId)) {
+        return;
+    }
+
+    // Đưa admin vào trạng thái chờ nhập liệu
+    adminAddingAlbum.add(userId);
+
+    const syntaxMsg = `
+🔥 *Pé đang lắng nghe đây!*
+Anh chạm vào khối chữ bên dưới để copy nhanh cú pháp mẫu nha:
+
+\`\`\`
+- Title: Nhập tên album
+- Link: ["Link 1", "Link 2"]
+- File ID: Nhập ID file
+- Type: photo hoặc video
+- Tags: ["Masterbation", "Lesbian", "HaveSex", "BDSM", "Squirt", "Public", "Anal", "Scat"]
+- Price: 50000
+- Description: Nhập mô tả...
+\`\`\`
+
+_(Gõ /cancel nếu anh muốn huỷ bỏ thao tác nha!)_
+`;
+    await ctx.reply(syntaxMsg, { parse_mode: 'Markdown' });
+});
+
+bot.command('editalbum', async (ctx) => {
+    const userId = ctx.from.id;
+
+    // Chỉ Admin mới được dùng lệnh này
+    if (!ADMIN_IDS.includes(userId)) return;
+
+    // Lấy ID từ tin nhắn (ví dụ: /editalbum 52)
+    const text = ctx.message.text.trim();
+    const args = text.split(/\s+/);
+
+    if (args.length < 2) {
+        return ctx.reply("⚠️ Anh gõ thiếu ID rồi nè. Cú pháp: `/editalbum [id]` nha!", { parse_mode: 'Markdown' });
+    }
+
+    const albumId = parseInt(args[1] as string);
+    if (isNaN(albumId)) {
+        return ctx.reply("⚠️ ID album phải là một con số nha anh iu!");
+    }
+
+    try {
+        // Query trực tiếp từ Database để lấy dữ liệu gốc, chuẩn xác nhất (tránh lấy giá đã bị format chữ 'k' ở cache)
+        const res = await pool.query('SELECT * FROM albums WHERE id = $1', [albumId]);
+
+        if (res.rows.length === 0) {
+            return ctx.reply(`❌ Pé hông tìm thấy album nào có ID = ${albumId} trong Database cả!`);
+        }
+
+        const dbAlbum = res.rows[0];
+
+        // Format lại dữ liệu thành form mẫu chuẩn
+        const linkStr = dbAlbum.link_album ? JSON.stringify(dbAlbum.link_album) : '[]';
+        const tagsStr = dbAlbum.tags ? JSON.stringify(dbAlbum.tags) : '[]';
+
+        const template =
+            `id: ${dbAlbum.id}
+title: ${dbAlbum.title}
+link: ${linkStr}
+fileID: ${dbAlbum.fileid}
+type: ${dbAlbum.type}
+tags: ${tagsStr}
+price: ${dbAlbum.price}
+description: ${dbAlbum.description}`;
+
+        // Đưa admin vào trạng thái chờ sửa album
+        adminEditingAlbum.add(userId);
+
+        await ctx.reply(`🔥 *Dữ liệu hiện tại của Album ID ${albumId}:*\nAnh copy khung dưới đây, sửa lại thông tin rồi gửi lại cho pé nha!\n_(Gõ /cancel nếu anh đổi ý hông muốn sửa nữa)_`, { parse_mode: 'Markdown' });
+
+        // Gửi khung code block để anh dễ copy bằng 1 lần chạm
+        await ctx.reply(`\`\`\`\n${template}\n\`\`\``, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error("Lỗi khi fetch album để edit:", error);
+        return ctx.reply("Huhu có lỗi xảy ra khi pé lấy dữ liệu từ DB rồi anh ơi!");
+    }
+});
+
+bot.command('searchalbum', async (ctx) => {
+    const userId = ctx.from.id;
+
+    // Chỉ Admin mới được dùng lệnh này
+    if (!ADMIN_IDS.includes(userId)) return;
+
+    // Lấy toàn bộ nội dung tin nhắn
+    const text = ctx.message.text.trim();
+    const args = text.split(/\s+/);
+    
+    if (args.length < 2) {
+        return ctx.reply("⚠️ Anh gõ thiếu từ khóa rồi nè. Cú pháp: `/searchalbum [từ khóa]` nha!", { parse_mode: 'Markdown' });
+    }
+
+    // Trích xuất từ khóa tìm kiếm (lấy phần chữ phía sau chữ /searchalbum)
+    // Dùng cách này để lỡ anh tìm chuỗi dài như "/searchalbum his pet" nó vẫn nhận diện đủ
+    const searchTerm = text.substring(text.indexOf(' ') + 1).trim();
+
+    try {
+        // Dùng ILIKE để tìm kiếm tương đối và không phân biệt hoa/thường
+        // LIMIT 30 để lỡ có quá nhiều kết quả thì Telegram không bị báo lỗi tin nhắn quá dài
+        const query = `
+            SELECT id, title 
+            FROM albums 
+            WHERE title ILIKE $1
+            ORDER BY id ASC
+            LIMIT 30
+        `;
+        
+        // Thêm dấu % vào hai đầu để Database hiểu là "tìm chuỗi có CHỨA từ này"
+        const res = await pool.query(query, [`%${searchTerm}%`]);
+        
+        if (res.rows.length === 0) {
+            return ctx.reply(`❌ Pé hông tìm thấy album nào có chứa chữ *"${searchTerm}"* cả!`, { parse_mode: 'Markdown' });
+        }
+
+        // Tạo danh sách hiển thị
+        let replyText = `🔍 *Pé tìm thấy ${res.rows.length} kết quả cho "${searchTerm}":*\n\n`;
+        
+        res.rows.forEach((album) => {
+            replyText += `👉 *ID:* \`${album.id}\` — ${album.title}\n`;
+        });
+
+        replyText += `\n_(Gõ /editalbum [ID] để sửa hoặc /del [ID] để xóa nhé)_`;
+
+        return ctx.reply(replyText, { parse_mode: 'Markdown' });
+
+    } catch (error) {
+        console.error("Lỗi khi tìm kiếm album:", error);
+        return ctx.reply("Huhu có lỗi xảy ra khi pé quét Database rồi anh ơi! Anh check log server xem sao nha.");
+    }
+});
+
+// ------------------------------
+// Lắng nghe text để bắt cú pháp (Phải đặt TRƯỚC catch-all bot.on('message') xoá tin nhắn)
+// ------------------------------
+bot.on('text', async (ctx, next) => {
+    const userId = ctx.from.id;
+
+    // ==============================================================
+    // 1. NẾU ĐANG TRONG TRẠNG THÁI SỬA ALBUM (/editalbum)
+    // ==============================================================
+    if (adminEditingAlbum.has(userId)) {
+        const text = (ctx.message as any).text;
+
+        if (text === '/cancel') {
+            adminEditingAlbum.delete(userId);
+            return ctx.reply("Đã huỷ thao tác sửa album nha anh iu! ❌");
+        }
+
+        try {
+            // Trích xuất dữ liệu bằng Regex (không phân biệt chữ hoa chữ thường)
+            const idMatch = text.match(/id:\s*(\d+)/i);
+            const titleMatch = text.match(/title:\s*(.+)/i);
+            const linkMatch = text.match(/link:\s*(\[.*?\])/is);
+            const fileIdMatch = text.match(/fileID:\s*(.+)/i);
+            const typeMatch = text.match(/type:\s*(photo|video)/i);
+            const tagsMatch = text.match(/tags:\s*(\[.*?\])/is);
+            const priceMatch = text.match(/price:\s*(.+)/i);
+            const descMatch = text.match(/description:\s*([\s\S]+)/i);
+
+            // Bắt lỗi nếu anh gửi thiếu dòng nào
+            const missing = [];
+            if (!idMatch) missing.push("id");
+            if (!titleMatch) missing.push("title");
+            if (!linkMatch) missing.push("link (Anh nhớ bao trong ngoặc vuông [...])");
+            if (!fileIdMatch) missing.push("fileID");
+            if (!typeMatch) missing.push("type (photo/video)");
+            if (!tagsMatch) missing.push("tags (Anh nhớ bao trong ngoặc vuông [...])");
+            if (!priceMatch) missing.push("price");
+            if (!descMatch) missing.push("description");
+
+            if (missing.length > 0) {
+                return ctx.reply(`⚠️ **Pé bắt được lỗi sai rồi nha!**\nAnh đang nhập thiếu hoặc sai định dạng ở các dòng này nè:\n👉 *${missing.join(', ')}*\n\nAnh rà soát lại xíu nghen!`, { parse_mode: 'Markdown' });
+            }
+
+            // Gán dữ liệu
+            const albumId = parseInt(idMatch![1]);
+            const title = titleMatch![1].trim();
+            const fileId = fileIdMatch![1].trim();
+            const type = typeMatch![1].toLowerCase().trim();
+            const price = priceMatch![1].trim();
+            const description = descMatch![1].trim();
+
+            const linkStr = linkMatch![1].replace(/[“”]/g, '"').trim();
+            const tagsStr = tagsMatch![1].replace(/[“”]/g, '"').trim();
+            
+            const links = JSON.parse(linkStr);
+            const tags = JSON.parse(tagsStr);
+
+            // Cập nhật vào DB
+            const query = `
+                UPDATE albums 
+                SET title = $1, link_album = $2, fileid = $3, type = $4, tags = $5, price = $6, description = $7
+                WHERE id = $8
+            `;
+            
+            await pool.query(query, [
+                title, 
+                JSON.stringify(links), 
+                fileId, 
+                type, 
+                tags, 
+                price, 
+                description, 
+                albumId
+            ]);
+            
+            // Xóa state và reload cache lại liền
+            adminEditingAlbum.delete(userId);
+            await loadAllAlbumsData(); 
+
+            return ctx.reply(`🎉 Pé đã cập nhật xong toàn bộ thay đổi cho Album ID *${albumId}* rồi nha anh iu!`, { parse_mode: 'Markdown' });
+
+        } catch (error) {
+            console.error("Lỗi khi update album:", error);
+            return ctx.reply("⚠️ Lỗi trích xuất dữ liệu mảng! Có thể anh gõ thiếu dấu phẩy `,` hoặc ngoặc kép `\" \"` ở phần Link/Tags rồi. Anh gõ /cancel để thoát hoặc gửi lại bản đã sửa nhé.");
+        }
+    }
+
+    // ==============================================================
+    // 2. NẾU ĐANG TRONG TRẠNG THÁI THÊM ALBUM MỚI (/addalbum)
+    // ==============================================================
+    if (adminAddingAlbum.has(userId)) {
+        const text = (ctx.message as any).text;
+
+        if (text === '/cancel') {
+            adminAddingAlbum.delete(userId);
+            return ctx.reply("Đã huỷ thao tác thêm album nha anh iu! ❌");
+        }
+
+        try {
+            const titleMatch = text.match(/Title:\s*(.+)/i);
+            const linkMatch = text.match(/Link:\s*(\[.*?\])/is);
+            const fileIdMatch = text.match(/File\s*ID:\s*(.+)/i);
+            const typeMatch = text.match(/Type:\s*(photo|video)/i);
+            const tagsMatch = text.match(/Tags:\s*(\[.*?\])/is);
+            const priceMatch = text.match(/Price:\s*(.+)/i);
+            const descMatch = text.match(/Description:\s*([\s\S]+)/i);
+
+            const missing = [];
+            if (!titleMatch) missing.push("Title");
+            if (!linkMatch) missing.push("Link (Anh nhớ phải bao trong ngoặc vuông [...])");
+            if (!fileIdMatch) missing.push("FileID");
+            if (!typeMatch) missing.push("Type (Chỉ được ghi đúng chữ 'photo' hoặc 'video')");
+            if (!tagsMatch) missing.push("Tags (Anh nhớ phải bao trong ngoặc vuông [...])");
+            if (!priceMatch) missing.push("Price");
+            if (!descMatch) missing.push("Description");
+
+            if (missing.length > 0) {
+                return ctx.reply(`⚠️ **Pé bắt được lỗi sai rồi nha!**\nAnh đang nhập thiếu hoặc sai định dạng ở các dòng này nè:\n👉 *${missing.join(', ')}*\n\nAnh rà soát lại xíu nghen!`, { parse_mode: 'Markdown' });
+            }
+
+            const title = titleMatch![1].trim();
+            const fileId = fileIdMatch![1].trim();
+            const type = typeMatch![1].toLowerCase().trim();
+            const price = priceMatch![1].trim();
+            const description = descMatch![1].trim();
+
+            const linkStr = linkMatch![1].replace(/[“”]/g, '"').trim();
+            const tagsStr = tagsMatch![1].replace(/[“”]/g, '"').trim();
+            
+            const links = JSON.parse(linkStr);
+            const tags = JSON.parse(tagsStr);
+
+            const isSuccess = await addNewAlbum(title, links, fileId, type, tags, price, description);
+            
+            if (isSuccess) {
+                adminAddingAlbum.delete(userId); 
+                return ctx.reply(`🎉 Pé đã thêm album *" ${title} "* vào Database thành công rồi nha!`, { parse_mode: 'Markdown' });
+            } else {
+                return ctx.reply("Huhu, có lỗi khi lưu vào Database rồi anh ơi! Xem log trên server nha.");
+            }
+        } catch (error) {
+            console.error(error);
+            return ctx.reply("⚠️ Lỗi trích xuất dữ liệu mảng! Có thể anh gõ thiếu dấu phẩy `,` hoặc ngoặc kép `\" \"` ở phần Link/Tags rồi. Anh gõ /cancel để thoát hoặc gửi lại nhé.");
+        }
+    }
+
+    // Nếu không thuộc diện thêm/sửa album, pass qua middleware tiếp theo
+    return next();
 });
 
 bot.on('message', async (ctx) => {
