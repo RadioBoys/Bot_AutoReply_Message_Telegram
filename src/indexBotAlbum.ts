@@ -1015,16 +1015,26 @@ bot.command('searchalbum', async (ctx) => {
 // ------------------------------
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
+    const text = (ctx.message as any).text;
 
     // ==============================================================
     // 1. NẾU ĐANG TRONG TRẠNG THÁI SỬA ALBUM (/editalbum)
     // ==============================================================
     if (adminEditingAlbum.has(userId)) {
-        const text = (ctx.message as any).text;
-
         if (text === '/cancel') {
             adminEditingAlbum.delete(userId);
             return ctx.reply("Đã huỷ thao tác sửa album nha anh iu! ❌");
+        }
+
+        // 👇 KHIÊN 1: Huỷ trạng thái chờ nếu anh gõ lệnh khác hoặc tag bot
+        if (text.startsWith('/') || text.trim().startsWith('@')) {
+            adminEditingAlbum.delete(userId);
+            return next();
+        }
+
+        // 👇 KHIÊN 2: Bỏ qua nếu tin nhắn không giống cú pháp sửa (không có chữ 'id:')
+        if (!text.toLowerCase().includes('id:')) {
+            return next();
         }
 
         try {
@@ -1101,11 +1111,20 @@ bot.on('text', async (ctx, next) => {
     // 2. NẾU ĐANG TRONG TRẠNG THÁI THÊM ALBUM MỚI (/addalbum)
     // ==============================================================
     if (adminAddingAlbum.has(userId)) {
-        const text = (ctx.message as any).text;
-
         if (text === '/cancel') {
             adminAddingAlbum.delete(userId);
             return ctx.reply("Đã huỷ thao tác thêm album nha anh iu! ❌");
+        }
+
+        // 👇 KHIÊN 1: Huỷ trạng thái chờ nếu anh gõ lệnh khác hoặc tag bot
+        if (text.startsWith('/') || text.trim().startsWith('@')) {
+            adminAddingAlbum.delete(userId);
+            return next();
+        }
+
+        // 👇 KHIÊN 2: Bỏ qua nếu tin nhắn không giống cú pháp thêm (không có chữ 'Title:')
+        if (!text.toLowerCase().includes('title:')) {
+            return next();
         }
 
         try {
@@ -1196,7 +1215,7 @@ bot.catch(async (err: any, ctx: Context) => {
     }
 });
 
-bot.launch();
+bot.launch({ dropPendingUpdates: true });
 console.log('NyanBot (TypeScript) đang chạy...');
 
 const PORT = 3000;
