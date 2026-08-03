@@ -313,6 +313,7 @@ bot.start(async (ctx) => {
                 [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
                 [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
                 [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
+                [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
                 [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
             ]
         }
@@ -332,8 +333,90 @@ const getMainMenuKeyboard = () => ({
         [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
         [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
         [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
+        [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
         [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
     ]
+});
+
+bot.action('view_top_fans', async (ctx) => {
+    try {
+        await ctx.replyWithChatAction('typing');
+        const userId = ctx.from?.id;
+        if (!userId) return;
+
+        // Tính chính xác tháng trước và năm tương ứng
+        const now = new Date();
+        const lastMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        const lastMonth = lastMonthDate.getMonth() + 1; // 1 - 12
+        const yearOfLastMonth = lastMonthDate.getFullYear();
+
+        // SQL Query: Lọc purchases theo tháng và năm của purchased_at
+        const topQuery = `
+            SELECT 
+                u.user_id,
+                u.full_name,
+                u.username,
+                SUM(p.price) AS total_spent
+            FROM users_data u
+            JOIN users_purchased p ON u.user_id = p.user_id
+            WHERE EXTRACT(MONTH FROM p.purchased_at) = $1 
+              AND EXTRACT(YEAR FROM p.purchased_at) = $2
+            GROUP BY u.user_id, u.full_name, u.username
+            ORDER BY total_spent DESC
+            LIMIT 3;
+        `;
+
+        const topRes = await pool.query(topQuery, [lastMonth, yearOfLastMonth]);
+        const topUsers = topRes.rows;
+
+        let topText = `<b>Top Fan Cứng Tháng ${lastMonth}:</b>\n\n`;
+
+        if (topUsers.length === 0) {
+            topText += `Chưa có dữ liệu Top Fan tháng ${lastMonth}\n`;
+        } else {
+            topUsers.forEach((u, index) => {
+                let rawName = u.full_name || u.username || 'Khách';
+
+                // Escape các ký tự HTML đặc biệt để tránh crash Telegram parse mode
+                rawName = rawName
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                const maskedName = rawName.substring(0, 2) + 'xxx';
+
+                const spent = parseInt(u.total_spent) || 0;
+
+                // Chuyển spent sang định dạng có dấu chấm phân cách (Ví dụ: 350000 -> "350.000")
+                const formatted = spent.toLocaleString('vi-VN');
+
+                // Ẩn giá tiền: Giữ lại 1 chữ số đầu tiên, còn lại biến thành 'x'
+                let hasFirstDigit = false;
+                const maskedPrice = formatted.split('').map(char => {
+                    if (/\d/.test(char)) {
+                        if (!hasFirstDigit) {
+                            hasFirstDigit = true;
+                            return char; // Giữ chữ số đầu tiên
+                        }
+                        return 'x'; // Các chữ số sau chuyển thành x
+                    }
+                    return char; // Dấu chấm (.) giữ nguyên
+                }).join('');
+
+                topText += `<Code>Top ${index + 1}: [  ${maskedName}  ] -- Donate: ${maskedPrice}\n</Code>`;
+            });
+        }
+
+        topText += `\nTop Fan Cứng sẽ được cập nhật vào cuối tháng\n\n`;
+
+        await ctx.reply(topText, {
+            parse_mode: 'HTML'
+        });
+
+    } catch (error) {
+        console.error('Lỗi view_top_fans:', error);
+        await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
+    }
 });
 
 bot.action('view_services', async (ctx) => {
