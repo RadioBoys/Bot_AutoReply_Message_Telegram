@@ -1035,49 +1035,74 @@ bot.command('searchalbum', async (ctx) => {
 
 bot.command('adduserbuy', async (ctx) => {
     const adminId = ctx.from.id;
-
+    
     // 1. Kiểm tra xem có phải Admin không
     if (!ADMIN_IDS.includes(adminId)) return;
 
-    // 2. Lấy ID album từ cú pháp lệnh (ví dụ: /adduserbuy 31 -> payload là "31")
+    // 2. Lấy payload và tách ra thành mảng (dựa vào dấu cách)
     const payload = ctx.payload.trim();
     if (!payload) {
-        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
+        return ctx.reply('⚠️ Sếp ơi, sai cú pháp rồi! Sếp phải nhập ID album nha.\n👉 Ví dụ: `/adduserbuy 31` hoặc `/adduserbuy 31 123456789`', { parse_mode: 'Markdown' });
     }
 
-    const albumId = parseInt(payload);
+    const args = payload.split(/\s+/); // Tách các chữ bằng khoảng trắng
+    const albumId = parseInt(args[0] as string);
+    
     if (isNaN(albumId)) {
-        return ctx.reply('⚠️ ID album phải là một con số nha anh!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
+        return ctx.reply('⚠️ ID album phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
     }
 
-    // 3. Kiểm tra xem anh có đang reply một tin nhắn forward không
+    let targetUserId: number;
+    let targetName = 'Khách Hàng';
+    
+    // Kiểm tra xem sếp có reply tin nhắn nào không
     const replyTo = ctx.message.reply_to_message as any;
-    if (!replyTo) {
-        return ctx.reply('⚠️ Anh ơi, anh phải Reply (Trả lời) một tin nhắn forward của khách hàng rồi gõ lệnh nha!');
+
+    // 3. Xử lý logic tìm ID Khách Hàng
+    if (args.length >= 2) {
+        // TRƯỜNG HỢP A: Sếp nhập trực tiếp cả 2 số (Ví dụ: /adduserbuy 54 5393831530)
+        targetUserId = parseInt(args[1] as string);
+        if (isNaN(targetUserId)) {
+            return ctx.reply('⚠️ User ID phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+        }
+        
+        // Vớt vát lấy tên khách hàng nếu sếp có reply tin nhắn ẩn
+        if (replyTo && replyTo.forward_sender_name) {
+            targetName = replyTo.forward_sender_name;
+        }
+
+    } else {
+        // TRƯỜNG HỢP B: Sếp chỉ nhập ID album, yêu cầu bắt buộc phải reply tin nhắn forward
+        if (!replyTo) {
+            return ctx.reply('⚠️ Sếp ơi, sếp phải Reply (Trả lời) một tin nhắn forward của khách hàng, HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+        }
+
+        const targetUser = replyTo.forward_from;
+        
+        // Kiểm tra xem khách có ẩn ID forward không
+        if (!targetUser) {
+            return ctx.reply('⚠️ User ẩn ID forward rồi, nhập lại lệnh `/adduserbuy [id album] [userid]` nhé.\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+        }
+
+        // Lấy thông tin bình thường nếu khách không ẩn
+        targetUserId = targetUser.id;
+        const firstName = targetUser.first_name || '';
+        const lastName = targetUser.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+        targetName = fullName || targetUser.username || 'Khách Hàng';
     }
 
-    // 4. Lấy thông tin người dùng từ tin nhắn forward
-    const targetUser = replyTo.forward_from;
-    if (!targetUser) {
-        return ctx.reply('⚠️ Ái chà... Khách hàng này đã bật tính năng "Ẩn link tài khoản khi Forward" trong cài đặt quyền riêng tư rồi. Nyan không thể soi được ID của họ anh ạ!');
-    }
-
-    const targetUserId = targetUser.id;
-    const targetFirstName = targetUser.first_name || '';
-    const targetLastName = targetUser.last_name || '';
-    const targetName = `${targetFirstName} ${targetLastName}`.trim() || 'Khách Hàng';
-
+    // 4. Xử lý ghi vào Database
     try {
-        // 5. Kiểm tra xem Album có tồn tại trong database không và lấy giá tiền
         const albumRes = await pool.query('SELECT title, price FROM albums WHERE id = $1', [albumId]);
-
+        
         if (albumRes.rowCount === 0) {
-            return ctx.reply(`⚠️ Không tìm thấy Album nào có ID là ${albumId} trong kho Album!`);
+            return ctx.reply(`⚠️ Không tìm thấy Album nào có ID là ${albumId} trong kho hàng!`);
         }
 
         const targetAlbum = albumRes.rows[0];
 
-        // 6. Insert mồi User vào users_data (Đề phòng khách chưa /start bot bao giờ, tránh lỗi Foreign Key)
+        // Insert mồi User vào users_data (Đề phòng khách chưa /start bot bao giờ)
         await pool.query(
             `INSERT INTO users_data (user_id, full_name, balance) 
              VALUES ($1, $2, 0) 
@@ -1085,22 +1110,22 @@ bot.command('adduserbuy', async (ctx) => {
             [targetUserId, targetName]
         );
 
-        // 7. Thêm vào bảng users_purchased
+        // Thêm vào bảng users_purchased
         await pool.query(
             `INSERT INTO users_purchased (user_id, album_id, price, purchased_at) 
              VALUES ($1, $2, $3, NOW())`,
             [targetUserId, albumId, targetAlbum.price]
         );
+        
+        // Dọn dẹp tin nhắn chứa lệnh của sếp
+        ctx.deleteMessage().catch(() => {});
 
-        // Tùy chọn: Xóa luôn tin nhắn lệnh /adduserbuy 31 của anh cho sạch Group
-        ctx.deleteMessage().catch(() => { });
-
-        // 8. Báo cáo thành công
-        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n🎥 **${targetAlbum.title}** (ID: ${albumId})\n👤 Cho khách hàng: **${targetName}** (ID: ${targetUserId}) thành công! ~(=^‥^)/`, { parse_mode: 'Markdown' });
+        // Báo cáo thành công
+        await ctx.reply(`✅ Tuyệt vời sếp ơi! Đã cấp quyền sở hữu album:\n🎥 **${targetAlbum.title}** (ID: ${albumId})\n👤 Cho khách hàng: **${targetName}** (ID: ${targetUserId}) thành công! ~(=^‥^)/`, { parse_mode: 'Markdown' });
 
     } catch (error) {
         console.error('Lỗi khi add user buy:', error);
-        ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, anh check lại Log terminal nha!');
+        ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, sếp check lại Log terminal nha!');
     }
 });
 
