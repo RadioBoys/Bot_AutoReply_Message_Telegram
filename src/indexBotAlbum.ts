@@ -29,16 +29,15 @@ async function addNewAlbum(
 
         await pool.query(query, [
             title,
-            JSON.stringify(links), // Giữ nguyên JSON vì cột link_album là kiểu JSON
+            JSON.stringify(links), 
             '',
             fileId,
             type,
-            tags,                  // THÁO BỎ JSON.stringify Ở ĐÂY (VÌ CỘT NÀY LÀ MẢNG TEXT[])
+            tags,                  
             price,
             description
         ]);
 
-        // Load lại bộ nhớ đệm cache mảng albums ngay lập tức
         await loadAllAlbumsData();
         return true;
     } catch (error) {
@@ -95,7 +94,6 @@ pool.connect()
     })
     .catch((err) => console.error("Failed to connect to PostgreSQL database:", err));
 
-// Hàm tự động đồng bộ lại bộ đếm ID cho bảng users_purchased lúc bot khởi động
 pool.query(`
     SELECT setval(
         'users_purchased_id_seq', 
@@ -179,6 +177,49 @@ async function addWarnMessageId(userId: number, warnMsgId: number) {
     }
 }
 
+async function addSystemMessageId(userId: number, messageId: number) {
+    try {
+        const query = `
+            UPDATE users_data 
+            SET system_message_ids = array_append(COALESCE(system_message_ids, '{}'), $1)
+            WHERE user_id = $2;
+        `;
+        await pool.query(query, [messageId, userId]);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function addAlbumLinkMessageId(userId: number, messageId: number) {
+    try {
+        const query = `
+            UPDATE users_data 
+            SET album_link_message_ids = array_append(COALESCE(album_link_message_ids, '{}'), $1)
+            WHERE user_id = $2;
+        `;
+        await pool.query(query, [messageId, userId]);
+    } catch (error) {
+        console.error(error);
+    }
+}
+
+async function cleanUserChatHistory(ctx: any, userId: number) {
+    try {
+        const result = await pool.query('SELECT system_message_ids FROM users_data WHERE user_id = $1', [userId]);
+        if (result.rows.length > 0) {
+            const systemMessageIds = result.rows[0].system_message_ids || [];
+            for (const msgId of systemMessageIds) {
+                try {
+                    await ctx.telegram.deleteMessage(userId, msgId);
+                } catch (err) { }
+            }
+            await pool.query(`UPDATE users_data SET system_message_ids = '{}' WHERE user_id = $1`, [userId]);
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 async function isAdminOrPrivate(ctx: any): Promise<boolean> {
     if (ctx.chat?.type === 'private') return true;
 
@@ -212,7 +253,6 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
         } catch (e) {
         }
 
-        // 🌟 UPDATE: Dùng thẳng SQL JOIN để lấy Title từ bảng albums cực mượt
         let purchasedAlbums: { id: any, title: string }[] = [];
         try {
             const query = `
@@ -222,7 +262,6 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
                 WHERE up.user_id::text = $1::text 
                 ORDER BY up.purchased_at ASC
             `;
-            // Vẫn giữ nguyên [customerId] truyền vào như cũ nha anh
             const res = await pool.query(query, [customerId]);
             purchasedAlbums = res.rows;
         } catch (e) {
@@ -297,35 +336,6 @@ bot.use(async (ctx, next) => {
     await next();
 });
 
-bot.start(async (ctx) => {
-    const hasPermission = await isAdminOrPrivate(ctx);
-    if (!hasPermission) {
-        return;
-    }
-
-    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
-    const sendOptions = {
-        caption: 'Hi anh. Anh mún chọn gì nè??',
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
-                [{ text: '👙Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
-                [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
-                [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
-                [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
-                [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
-                [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
-            ]
-        }
-    };
-
-    try {
-        return await ctx.replyWithPhoto(bannerFileId, sendOptions);
-    } catch (error) {
-        return await ctx.replyWithPhoto({ source: './img/Banner.jpg' }, sendOptions);
-    }
-});
-
 const getMainMenuKeyboard = () => ({
     inline_keyboard: [
         [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
@@ -338,19 +348,44 @@ const getMainMenuKeyboard = () => ({
     ]
 });
 
-bot.action('view_top_fans', async (ctx) => {
-    try {
-        await ctx.replyWithChatAction('typing');
-        const userId = ctx.from?.id;
-        if (!userId) return;
+bot.start(async (ctx) => {
+    const hasPermission = await isAdminOrPrivate(ctx);
+    if (!hasPermission) {
+        return;
+    }
 
-        // Tính chính xác tháng trước và năm tương ứng
+    const userId = ctx.from.id;
+    await cleanUserChatHistory(ctx, userId);
+
+    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
+    const sendOptions = {
+        caption: 'Hi anh. Anh mún chọn gì nè??',
+        reply_markup: getMainMenuKeyboard()
+    };
+
+    try {
+        const msg = await ctx.replyWithPhoto(bannerFileId, sendOptions);
+        await addSystemMessageId(userId, msg.message_id);
+    } catch (error) {
+        const msg = await ctx.replyWithPhoto({ source: './img/Banner.jpg' }, sendOptions);
+        await addSystemMessageId(userId, msg.message_id);
+    }
+});
+
+bot.action('view_top_fans', async (ctx) => {
+    try { await ctx.answerCbQuery(); } catch (e) { }
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    await cleanUserChatHistory(ctx, userId);
+    await ctx.replyWithChatAction('typing');
+
+    try {
         const now = new Date();
         const lastMonthDate = new Date(now.getFullYear(), now.getMonth(), 0);
-        const lastMonth = lastMonthDate.getMonth() + 1; // 1 - 12
+        const lastMonth = lastMonthDate.getMonth() + 1;
         const yearOfLastMonth = lastMonthDate.getFullYear();
 
-        // SQL Query: Lọc purchases theo tháng và năm của purchased_at
         const topQuery = `
             SELECT 
                 u.user_id,
@@ -377,7 +412,6 @@ bot.action('view_top_fans', async (ctx) => {
             topUsers.forEach((u, index) => {
                 let rawName = u.full_name || u.username || 'Khách';
 
-                // Escape các ký tự HTML đặc biệt để tránh crash Telegram parse mode
                 rawName = rawName
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
@@ -387,20 +421,18 @@ bot.action('view_top_fans', async (ctx) => {
 
                 const spent = parseInt(u.total_spent) || 0;
 
-                // Chuyển spent sang định dạng có dấu chấm phân cách (Ví dụ: 350000 -> "350.000")
                 const formatted = spent.toLocaleString('vi-VN');
 
-                // Ẩn giá tiền: Giữ lại 1 chữ số đầu tiên, còn lại biến thành 'x'
                 let hasFirstDigit = false;
                 const maskedPrice = formatted.split('').map(char => {
                     if (/\d/.test(char)) {
                         if (!hasFirstDigit) {
                             hasFirstDigit = true;
-                            return char; // Giữ chữ số đầu tiên
+                            return char; 
                         }
-                        return 'x'; // Các chữ số sau chuyển thành x
+                        return 'x'; 
                     }
-                    return char; // Dấu chấm (.) giữ nguyên
+                    return char; 
                 }).join('');
 
                 topText += `<Code>Top ${index + 1}: [  ${maskedName}  ] -- Donate: ${maskedPrice}\n</Code>`;
@@ -409,49 +441,50 @@ bot.action('view_top_fans', async (ctx) => {
 
         topText += `\nTop Fan Cứng sẽ được cập nhật vào cuối tháng\n\n`;
 
-        await ctx.reply(topText, {
-            parse_mode: 'HTML'
+        const msg = await ctx.reply(topText, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+            }
         });
+        await addSystemMessageId(userId, msg.message_id);
 
     } catch (error) {
         console.error('Lỗi view_top_fans:', error);
-        await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
+        const msg = await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
+        await addSystemMessageId(userId, msg.message_id);
     }
 });
 
 bot.action('view_services', async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
+    const userId = ctx.from?.id;
+    if (userId) await cleanUserChatHistory(ctx, userId);
+
     await ctx.replyWithChatAction('upload_photo').catch(() => { });
 
     const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
+    const sendOptions = {
+        caption: 'Hi anh. Anh mún chọn gì nè??',
+        reply_markup: getMainMenuKeyboard()
+    };
 
     try {
-        await ctx.editMessageMedia({
-            type: 'photo',
-            media: bannerFileId
-        });
+        const msg = await ctx.replyWithPhoto(bannerFileId, sendOptions);
+        if (userId) await addSystemMessageId(userId, msg.message_id);
     } catch (error) {
-        await ctx.editMessageMedia({
-            type: 'photo',
-            media: { source: fs.createReadStream('./img/Banner.jpg') }
-        });
-    }
-
-    try {
-        await ctx.editMessageCaption('Hi anh. Anh mún chọn gì nè??', {
-            reply_markup: getMainMenuKeyboard()
-        });
-    } catch (error) {
-        console.error(error);
+        const msg = await ctx.replyWithPhoto({ source: fs.createReadStream('./img/Banner.jpg') }, sendOptions);
+        if (userId) await addSystemMessageId(userId, msg.message_id);
     }
 });
 
 bot.action('check_balance', async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
-    await ctx.replyWithChatAction('typing').catch(() => { });
-
     const chatId = ctx.chat?.id;
     if (!chatId) return;
+
+    await cleanUserChatHistory(ctx, chatId);
+    await ctx.replyWithChatAction('typing').catch(() => { });
 
     const balance = await getUserBalance(chatId);
     let purchasedCount = 0;
@@ -461,13 +494,22 @@ bot.action('check_balance', async (ctx) => {
         purchasedCount = Number(countResult.rows[0].count);
     } catch (e) { }
 
-    await ctx.reply(`💳 *VÍ TÍCH LŨY CỦA ANH* \n\nSố dư ví hiện tại: *${balance.toLocaleString()}đ*\n📦 Album đã mua thành công: *${purchasedCount}*\n\n_(Tiền thừa khi chuyển khoản sai cấu trúc hoặc dư sẽ tự động nạp thẳng vào ví này để trừ vào các đơn hàng sau!)_`, { parse_mode: 'Markdown' });
+    const msg = await ctx.reply(`💳 *VÍ TÍCH LŨY CỦA ANH* \n\nSố dư ví hiện tại: *${balance.toLocaleString()}đ*\n📦 Album đã mua thành công: *${purchasedCount}*\n\n_(Tiền thừa khi chuyển khoản sai cấu trúc hoặc dư sẽ tự động nạp thẳng vào ví này để trừ vào các đơn hàng sau!)_`, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+        }
+    });
+    await addSystemMessageId(chatId, msg.message_id);
 });
 
 const userSessionMessages = new Map<number, number[]>();
 
 bot.action(/view(.+)/, async (ctx) => {
     try { await ctx.answerCbQuery(); } catch (e) { }
+
+    const userId = ctx.from?.id;
+    if (userId) await cleanUserChatHistory(ctx, userId);
 
     const service = ctx.match[1];
 
@@ -533,38 +575,40 @@ bot.action(/view(.+)/, async (ctx) => {
             break;
     }
 
-    if (fileInfo.type === 'video') {
-        await ctx.replyWithChatAction('upload_video').catch(() => { });
-    } else {
-        await ctx.replyWithChatAction('upload_photo').catch(() => { });
-    }
+    const sendOptions = {
+        caption: fileInfo.text,
+        reply_markup: fileInfo.keyboard
+    };
 
     try {
-        await ctx.editMessageMedia({
-            type: fileInfo.type,
-            media: fileInfo.file_id
-        });
+        let msg;
+        if (fileInfo.type === 'video') {
+            await ctx.replyWithChatAction('upload_video').catch(() => { });
+            msg = await ctx.replyWithVideo(fileInfo.file_id, sendOptions);
+        } else {
+            await ctx.replyWithChatAction('upload_photo').catch(() => { });
+            msg = await ctx.replyWithPhoto(fileInfo.file_id, sendOptions);
+        }
+        if (userId && msg) await addSystemMessageId(userId, msg.message_id);
     } catch (error) {
-        if (!fs.existsSync(fileInfo.path)) return ctx.reply("File không tồn tại trên cả Cloud lẫn ổ cứng!");
-        await ctx.editMessageMedia({
-            type: fileInfo.type,
-            media: { source: fs.createReadStream(fileInfo.path) }
-        });
-    }
+        if (!fs.existsSync(fileInfo.path)) {
+            const msg = await ctx.reply("File không tồn tại trên cả Cloud lẫn ổ cứng!");
+            if (userId) await addSystemMessageId(userId, msg.message_id);
+            return;
+        }
 
-    try {
-        await ctx.editMessageCaption(fileInfo.text, {
-            reply_markup: fileInfo.keyboard
-        });
-    } catch (error) {
-        console.error(error);
+        let msg;
+        if (fileInfo.type === 'video') {
+            msg = await ctx.replyWithVideo({ source: fs.createReadStream(fileInfo.path) }, sendOptions);
+        } else {
+            msg = await ctx.replyWithPhoto({ source: fs.createReadStream(fileInfo.path) }, sendOptions);
+        }
+        if (userId && msg) await addSystemMessageId(userId, msg.message_id);
     }
 });
 
 bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
-    try {
-        await ctx.answerCbQuery();
-    } catch (e) { }
+    try { await ctx.answerCbQuery(); } catch (e) { }
     await ctx.replyWithChatAction('typing').catch(() => { });
 
     const selectedTag = ctx.match[1];
@@ -572,6 +616,8 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
     const chatId = ctx.chat?.id;
 
     if (!selectedTag || !chatId) return ctx.reply("An error occurred, session not found!");
+
+    if (chatId) await cleanUserChatHistory(ctx, chatId);
 
     const oldMessageIds = userSessionMessages.get(chatId) || [];
     for (const msgId of oldMessageIds) {
@@ -584,12 +630,15 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
     const filteredAlbums = albums.filter(album => album.tags.includes(selectedTag));
 
     if (filteredAlbums.length === 0) {
-        return ctx.reply(`Album thể loại ${selectedTag} em chưa có rùi a iu ơi ~`);
+        const msg = await ctx.reply(`Album thể loại ${selectedTag} em chưa có rùi a iu ơi ~`);
+        await addSystemMessageId(chatId, msg.message_id);
+        return;
     }
 
     const newSentMessageIds: number[] = [];
     const loadingMsg = await ctx.reply(`Anh iu đợi pé xíu nha. Pé đang gửi thể loại ${selectedTag} qua nè... ❤️❤️❤️ ~ ~`);
     newSentMessageIds.push(loadingMsg.message_id);
+    await addSystemMessageId(chatId, loadingMsg.message_id);
 
     setTimeout(async () => {
         try {
@@ -666,6 +715,7 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
 
             if (sentMsg) {
                 newSentMessageIds.push(sentMsg.message_id);
+                await addSystemMessageId(chatId, sentMsg.message_id);
             }
         } catch (error) {
             console.error(error);
@@ -680,35 +730,34 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     await ctx.replyWithChatAction('typing').catch(() => { });
 
     const albumIdStr = ctx.match[1];
+    const chatId = ctx.chat?.id;
+    if (!chatId) return ctx.reply("Không tìm thấy session chat của anh!");
 
     if (!albumIdStr) {
-        return ctx.reply("Huhu, lỗi rồi anh ơi. Không tìm thấy ID album!");
+        const msg = await ctx.reply("Huhu, lỗi rồi anh ơi. Không tìm thấy ID album!");
+        await addSystemMessageId(chatId, msg.message_id);
+        return;
     }
 
     const albumId = parseInt(albumIdStr);
     const targetAlbum = albums.find(a => a.id === albumId);
 
     if (!targetAlbum) {
-        return ctx.reply("Could not find this album's details anymore!");
+        const msg = await ctx.reply("Could not find this album's details anymore!");
+        await addSystemMessageId(chatId, msg.message_id);
+        return;
     }
-
-    const chatId = ctx.chat?.id;
-    if (!chatId) return ctx.reply("Không tìm thấy session chat của anh!");
 
     const cbQuery = ctx.callbackQuery as any;
     const clickedMessageId = cbQuery?.message?.message_id;
 
     if (clickedMessageId) {
         const sessionMsgIds = userSessionMessages.get(chatId) || [];
-
         for (const msgId of sessionMsgIds) {
             if (msgId !== clickedMessageId) {
-                try {
-                    await ctx.telegram.deleteMessage(chatId, msgId);
-                } catch (err) { }
+                try { await ctx.telegram.deleteMessage(chatId, msgId); } catch (err) { }
             }
         }
-
         userSessionMessages.set(chatId, [clickedMessageId]);
     }
 
@@ -719,7 +768,9 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     } catch (e) { }
 
     if (alreadyPurchased) {
-        return ctx.reply(`🎉 Album *"${targetAlbum.title}"* này anh đã mua và sở hữu rồi ạ!`, { parse_mode: 'Markdown' });
+        const msg = await ctx.reply(`🎉 Album *"${targetAlbum.title}"* này anh đã mua và sở hữu rồi ạ!`, { parse_mode: 'Markdown' });
+        await addSystemMessageId(chatId, msg.message_id);
+        return;
     }
 
     const orderCode = `NYAN${Date.now().toString().slice(-6)}`;
@@ -747,16 +798,18 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
         const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
         const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-        await ctx.reply(
+        const successMsg = await ctx.reply(
             `🎉 <b>MUA THÀNH CÔNG BẰNG VÍ SỐ DƯ!</b> \n\n` +
             `Số dư ví của anh đã tự động khấu trừ ${albumPriceNum.toLocaleString()}đ.\n` +
             `💳 Số dư hiện tại còn lại: <b>${remainingBalance.toLocaleString()}đ</b>.\n\n` +
             `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+            `💿 Album: <b>${targetAlbum.title}</b>\n` +
             `🔗 Link 1: ${link1Text}\n` +
             `🔗 Link 2: ${link2Text}\n\n` +
             `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
             { parse_mode: 'HTML' }
         );
+        await addAlbumLinkMessageId(chatId, successMsg.message_id);
 
         const userFirstName = ctx.from?.first_name || "Không rõ";
         const userLastName = ctx.from?.last_name || "";
@@ -796,11 +849,13 @@ Stk của quản lý em nên anh không cần lo nè ❤️
         );
 
         await setPendingOrder(chatId, orderCode, albumId, sentQrMsg.message_id);
+        await addSystemMessageId(chatId, sentQrMsg.message_id);
 
     } catch (error) {
         const sentTextMsg = await ctx.replyWithMarkdown(messageText);
 
         await setPendingOrder(chatId, orderCode, albumId, sentTextMsg.message_id);
+        await addSystemMessageId(chatId, sentTextMsg.message_id);
     }
 });
 
@@ -864,18 +919,20 @@ app.post('/webhook/bank', async (req, res) => {
                 const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
                 try {
-                    await bot.telegram.sendMessage(customerChatId,
+                    const successMsg = await bot.telegram.sendMessage(customerChatId,
                         `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
                         `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
                         `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
                         `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
                         `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
                         `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                        `💿 Album: <b>${targetAlbum.title}</b>\n` +
                         `🔗 Link 1: ${link1Text}\n` +
                         `🔗 Link 2: ${link2Text}\n\n` +
                         `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
                         { parse_mode: 'HTML' }
                     );
+                    await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
                 } catch (err: any) {
                     console.error(err);
                 }
@@ -902,6 +959,7 @@ app.post('/webhook/bank', async (req, res) => {
 
                 if (sentWarnMsg) {
                     await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
+                    await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
                 }
             }
         }
@@ -910,9 +968,6 @@ app.post('/webhook/bank', async (req, res) => {
     }
 });
 
-// ------------------------------
-// Listion slash /c, /getid, /addalbum, /editalbum, /searchalbum commands
-// ------------------------------
 bot.command('c', async (ctx) => {
     try {
         const hasPermission = await isAdminOrPrivate(ctx);
@@ -979,12 +1034,10 @@ bot.command('getid', (ctx) => {
 bot.command('addalbum', async (ctx) => {
     const userId = ctx.from.id;
 
-    // Chỉ Admin mới được dùng lệnh này
     if (!ADMIN_IDS.includes(userId)) {
         return;
     }
 
-    // Đưa admin vào trạng thái chờ nhập liệu
     adminAddingAlbum.add(userId);
 
     const syntaxMsg = `
@@ -1009,10 +1062,8 @@ _(Gõ /cancel nếu anh muốn huỷ bỏ thao tác nha!)_
 bot.command('editalbum', async (ctx) => {
     const userId = ctx.from.id;
 
-    // Chỉ Admin mới được dùng lệnh này
     if (!ADMIN_IDS.includes(userId)) return;
 
-    // Lấy ID từ tin nhắn (ví dụ: /editalbum 52)
     const text = ctx.message.text.trim();
     const args = text.split(/\s+/);
 
@@ -1026,7 +1077,6 @@ bot.command('editalbum', async (ctx) => {
     }
 
     try {
-        // Query trực tiếp từ Database để lấy dữ liệu gốc, chuẩn xác nhất (tránh lấy giá đã bị format chữ 'k' ở cache)
         const res = await pool.query('SELECT * FROM albums WHERE id = $1', [albumId]);
 
         if (res.rows.length === 0) {
@@ -1035,7 +1085,6 @@ bot.command('editalbum', async (ctx) => {
 
         const dbAlbum = res.rows[0];
 
-        // Format lại dữ liệu thành form mẫu chuẩn
         const linkStr = dbAlbum.link_album ? JSON.stringify(dbAlbum.link_album) : '[]';
         const tagsStr = dbAlbum.tags ? JSON.stringify(dbAlbum.tags) : '[]';
 
@@ -1049,12 +1098,10 @@ tags: ${tagsStr}
 price: ${dbAlbum.price}
 description: ${dbAlbum.description}`;
 
-        // Đưa admin vào trạng thái chờ sửa album
         adminEditingAlbum.add(userId);
 
         await ctx.reply(`🔥 *Dữ liệu hiện tại của Album ID ${albumId}:*\nAnh copy khung dưới đây, sửa lại thông tin rồi gửi lại cho pé nha!\n_(Gõ /cancel nếu anh đổi ý hông muốn sửa nữa)_`, { parse_mode: 'Markdown' });
 
-        // Gửi khung code block để anh dễ copy bằng 1 lần chạm
         await ctx.reply(`\`\`\`\n${template}\n\`\`\``, { parse_mode: 'Markdown' });
 
     } catch (error) {
@@ -1066,10 +1113,8 @@ description: ${dbAlbum.description}`;
 bot.command('searchalbum', async (ctx) => {
     const userId = ctx.from.id;
 
-    // Chỉ Admin mới được dùng lệnh này
     if (!ADMIN_IDS.includes(userId)) return;
 
-    // Lấy toàn bộ nội dung tin nhắn
     const text = ctx.message.text.trim();
     const args = text.split(/\s+/);
 
@@ -1077,13 +1122,9 @@ bot.command('searchalbum', async (ctx) => {
         return ctx.reply("⚠️ Anh gõ thiếu từ khóa rồi nè. Cú pháp: `/searchalbum [từ khóa]` nha!", { parse_mode: 'Markdown' });
     }
 
-    // Trích xuất từ khóa tìm kiếm (lấy phần chữ phía sau chữ /searchalbum)
-    // Dùng cách này để lỡ anh tìm chuỗi dài như "/searchalbum his pet" nó vẫn nhận diện đủ
     const searchTerm = text.substring(text.indexOf(' ') + 1).trim();
 
     try {
-        // Dùng ILIKE để tìm kiếm tương đối và không phân biệt hoa/thường
-        // LIMIT 30 để lỡ có quá nhiều kết quả thì Telegram không bị báo lỗi tin nhắn quá dài
         const query = `
             SELECT id, title 
             FROM albums 
@@ -1092,14 +1133,12 @@ bot.command('searchalbum', async (ctx) => {
             LIMIT 30
         `;
 
-        // Thêm dấu % vào hai đầu để Database hiểu là "tìm chuỗi có CHỨA từ này"
         const res = await pool.query(query, [`%${searchTerm}%`]);
 
         if (res.rows.length === 0) {
             return ctx.reply(`❌ Pé hông tìm thấy album nào có chứa chữ *"${searchTerm}"* cả!`, { parse_mode: 'Markdown' });
         }
 
-        // Tạo danh sách hiển thị
         let replyText = `🔍 *Pé tìm thấy ${res.rows.length} kết quả cho "${searchTerm}":*\n\n`;
 
         res.rows.forEach((album) => {
@@ -1119,16 +1158,14 @@ bot.command('searchalbum', async (ctx) => {
 bot.command('adduserbuy', async (ctx) => {
     const adminId = ctx.from.id;
 
-    // 1. Kiểm tra xem có phải Admin không
     if (!ADMIN_IDS.includes(adminId)) return;
 
-    // 2. Lấy payload và tách ra thành mảng (dựa vào dấu cách)
     const payload = ctx.payload.trim();
     if (!payload) {
         return ctx.reply('⚠️ Sếp ơi, sai cú pháp rồi! Sếp phải nhập ID album nha.\n👉 Ví dụ: `/adduserbuy 31` hoặc `/adduserbuy 31 123456789`', { parse_mode: 'Markdown' });
     }
 
-    const args = payload.split(/\s+/); // Tách các chữ bằng khoảng trắng
+    const args = payload.split(/\s+/); 
     const albumId = parseInt(args[0] as string);
 
     if (isNaN(albumId)) {
@@ -1138,36 +1175,29 @@ bot.command('adduserbuy', async (ctx) => {
     let targetUserId: number;
     let targetName = 'Khách Hàng';
 
-    // Kiểm tra xem sếp có reply tin nhắn nào không
     const replyTo = ctx.message.reply_to_message as any;
 
-    // 3. Xử lý logic tìm ID Khách Hàng
     if (args.length >= 2) {
-        // TRƯỜNG HỢP A: Sếp nhập trực tiếp cả 2 số (Ví dụ: /adduserbuy 54 5393831530)
         targetUserId = parseInt(args[1] as string);
         if (isNaN(targetUserId)) {
             return ctx.reply('⚠️ User ID phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
 
-        // Vớt vát lấy tên khách hàng nếu sếp có reply tin nhắn ẩn
         if (replyTo && replyTo.forward_sender_name) {
             targetName = replyTo.forward_sender_name;
         }
 
     } else {
-        // TRƯỜNG HỢP B: Sếp chỉ nhập ID album, yêu cầu bắt buộc phải reply tin nhắn forward
         if (!replyTo) {
             return ctx.reply('⚠️ Sếp ơi, sếp phải Reply (Trả lời) một tin nhắn forward của khách hàng, HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
 
         const targetUser = replyTo.forward_from;
 
-        // Kiểm tra xem khách có ẩn ID forward không
         if (!targetUser) {
             return ctx.reply('⚠️ User ẩn ID forward rồi, nhập lại lệnh `/adduserbuy [id album] [userid]` nhé.\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
 
-        // Lấy thông tin bình thường nếu khách không ẩn
         targetUserId = targetUser.id;
         const firstName = targetUser.first_name || '';
         const lastName = targetUser.last_name || '';
@@ -1175,7 +1205,6 @@ bot.command('adduserbuy', async (ctx) => {
         targetName = fullName || targetUser.username || 'Khách Hàng';
     }
 
-    // 4. Xử lý ghi vào Database
     try {
         const albumRes = await pool.query('SELECT title, price FROM albums WHERE id = $1', [albumId]);
 
@@ -1185,7 +1214,6 @@ bot.command('adduserbuy', async (ctx) => {
 
         const targetAlbum = albumRes.rows[0];
 
-        // Insert mồi User vào users_data (Đề phòng khách chưa /start bot bao giờ)
         await pool.query(
             `INSERT INTO users_data (user_id, full_name, balance) 
              VALUES ($1, $2, 0) 
@@ -1193,17 +1221,14 @@ bot.command('adduserbuy', async (ctx) => {
             [targetUserId, targetName]
         );
 
-        // Thêm vào bảng users_purchased
         await pool.query(
             `INSERT INTO users_purchased (user_id, album_id, price, purchased_at) 
              VALUES ($1, $2, $3, NOW())`,
             [targetUserId, albumId, targetAlbum.price]
         );
 
-        // Dọn dẹp tin nhắn chứa lệnh của sếp
         ctx.deleteMessage().catch(() => { });
 
-        // Báo cáo thành công
         await ctx.reply(`✅ Tuyệt vời sếp ơi! Đã cấp quyền sở hữu album:\n🎥 **${targetAlbum.title}** (ID: ${albumId})\n👤 Cho khách hàng: **${targetName}** (ID: ${targetUserId}) thành công! ~(=^‥^)/`, { parse_mode: 'Markdown' });
 
     } catch (error) {
@@ -1212,35 +1237,26 @@ bot.command('adduserbuy', async (ctx) => {
     }
 });
 
-// ------------------------------
-// Lắng nghe text để bắt cú pháp (Phải đặt TRƯỚC catch-all bot.on('message') xoá tin nhắn)
-// ------------------------------
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
     const text = (ctx.message as any).text;
 
-    // ==============================================================
-    // 1. NẾU ĐANG TRONG TRẠNG THÁI SỬA ALBUM (/editalbum)
-    // ==============================================================
     if (adminEditingAlbum.has(userId)) {
         if (text === '/cancel') {
             adminEditingAlbum.delete(userId);
             return ctx.reply("Đã huỷ thao tác sửa album nha anh iu! ❌");
         }
 
-        // 👇 KHIÊN 1: Huỷ trạng thái chờ nếu anh gõ lệnh khác hoặc tag bot
         if (text.startsWith('/') || text.trim().startsWith('@')) {
             adminEditingAlbum.delete(userId);
             return next();
         }
 
-        // 👇 KHIÊN 2: Bỏ qua nếu tin nhắn không giống cú pháp sửa (không có chữ 'id:')
         if (!text.toLowerCase().includes('id:')) {
             return next();
         }
 
         try {
-            // Trích xuất dữ liệu bằng Regex (không phân biệt chữ hoa chữ thường)
             const idMatch = text.match(/id:\s*(\d+)/i);
             const titleMatch = text.match(/title:\s*(.+)/i);
             const linkMatch = text.match(/link:\s*(\[.*?\])/is);
@@ -1250,7 +1266,6 @@ bot.on('text', async (ctx, next) => {
             const priceMatch = text.match(/price:\s*(.+)/i);
             const descMatch = text.match(/description:\s*([\s\S]+)/i);
 
-            // Bắt lỗi nếu anh gửi thiếu dòng nào
             const missing = [];
             if (!idMatch) missing.push("id");
             if (!titleMatch) missing.push("title");
@@ -1265,7 +1280,6 @@ bot.on('text', async (ctx, next) => {
                 return ctx.reply(`⚠️ **Pé bắt được lỗi sai rồi nha!**\nAnh đang nhập thiếu hoặc sai định dạng ở các dòng này nè:\n👉 *${missing.join(', ')}*\n\nAnh rà soát lại xíu nghen!`, { parse_mode: 'Markdown' });
             }
 
-            // Gán dữ liệu
             const albumId = parseInt(idMatch![1]);
             const title = titleMatch![1].trim();
             const fileId = fileIdMatch![1].trim();
@@ -1279,7 +1293,6 @@ bot.on('text', async (ctx, next) => {
             const links = JSON.parse(linkStr);
             const tags = JSON.parse(tagsStr);
 
-            // Cập nhật vào DB
             const query = `
                 UPDATE albums 
                 SET title = $1, link_album = $2, fileid = $3, type = $4, tags = $5, price = $6, description = $7
@@ -1297,7 +1310,6 @@ bot.on('text', async (ctx, next) => {
                 albumId
             ]);
 
-            // Xóa state và reload cache lại liền
             adminEditingAlbum.delete(userId);
             await loadAllAlbumsData();
 
@@ -1309,22 +1321,17 @@ bot.on('text', async (ctx, next) => {
         }
     }
 
-    // ==============================================================
-    // 2. NẾU ĐANG TRONG TRẠNG THÁI THÊM ALBUM MỚI (/addalbum)
-    // ==============================================================
     if (adminAddingAlbum.has(userId)) {
         if (text === '/cancel') {
             adminAddingAlbum.delete(userId);
             return ctx.reply("Đã huỷ thao tác thêm album nha anh iu! ❌");
         }
 
-        // 👇 KHIÊN 1: Huỷ trạng thái chờ nếu anh gõ lệnh khác hoặc tag bot
         if (text.startsWith('/') || text.trim().startsWith('@')) {
             adminAddingAlbum.delete(userId);
             return next();
         }
 
-        // 👇 KHIÊN 2: Bỏ qua nếu tin nhắn không giống cú pháp thêm (không có chữ 'Title:')
         if (!text.toLowerCase().includes('title:')) {
             return next();
         }
@@ -1376,7 +1383,6 @@ bot.on('text', async (ctx, next) => {
             return ctx.reply("⚠️ Lỗi trích xuất dữ liệu mảng! Có thể anh gõ thiếu dấu phẩy `,` hoặc ngoặc kép `\" \"` ở phần Link/Tags rồi. Anh gõ /cancel để thoát hoặc gửi lại nhé.");
         }
     }
-    // Nếu không thuộc diện thêm/sửa album, pass qua middleware tiếp theo
     return next();
 });
 
@@ -1388,6 +1394,7 @@ bot.on('message', async (ctx) => {
         }, 5000);
 
         const warningMsg = await ctx.reply('⚠️ Anh chỉ cần thao thao tác qua NÚT BẤM bên trên thui ạ ❤️!');
+        await addSystemMessageId(ctx.from.id, warningMsg.message_id);
 
         setTimeout(() => {
             ctx.telegram.deleteMessage(ctx.chat.id, warningMsg.message_id).catch(() => { });
@@ -1405,10 +1412,11 @@ bot.catch(async (err: any, ctx: Context) => {
     if (errMsg.includes('Timeout') || errMsg.includes('timed out')) {
         try {
             if (ctx.chat) {
-                await ctx.telegram.sendMessage(
+                const warnMsg = await ctx.telegram.sendMessage(
                     ctx.chat.id,
                     "⚠️ Hệ thống đang bận..vui lòng chờ 2-5 phút"
                 );
+                await addSystemMessageId(ctx.chat.id, warnMsg.message_id);
             }
         } catch (sendErr) {
             console.error(sendErr);
