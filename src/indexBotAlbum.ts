@@ -1035,7 +1035,7 @@ bot.command('searchalbum', async (ctx) => {
 
 bot.command('adduserbuy', async (ctx) => {
     const adminId = ctx.from.id;
-    
+
     // 1. Kiểm tra xem có phải Admin không
     if (!ADMIN_IDS.includes(adminId)) return;
 
@@ -1047,14 +1047,14 @@ bot.command('adduserbuy', async (ctx) => {
 
     const args = payload.split(/\s+/); // Tách các chữ bằng khoảng trắng
     const albumId = parseInt(args[0] as string);
-    
+
     if (isNaN(albumId)) {
         return ctx.reply('⚠️ ID album phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
     }
 
     let targetUserId: number;
     let targetName = 'Khách Hàng';
-    
+
     // Kiểm tra xem sếp có reply tin nhắn nào không
     const replyTo = ctx.message.reply_to_message as any;
 
@@ -1065,7 +1065,7 @@ bot.command('adduserbuy', async (ctx) => {
         if (isNaN(targetUserId)) {
             return ctx.reply('⚠️ User ID phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
-        
+
         // Vớt vát lấy tên khách hàng nếu sếp có reply tin nhắn ẩn
         if (replyTo && replyTo.forward_sender_name) {
             targetName = replyTo.forward_sender_name;
@@ -1078,7 +1078,7 @@ bot.command('adduserbuy', async (ctx) => {
         }
 
         const targetUser = replyTo.forward_from;
-        
+
         // Kiểm tra xem khách có ẩn ID forward không
         if (!targetUser) {
             return ctx.reply('⚠️ User ẩn ID forward rồi, nhập lại lệnh `/adduserbuy [id album] [userid]` nhé.\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
@@ -1095,7 +1095,7 @@ bot.command('adduserbuy', async (ctx) => {
     // 4. Xử lý ghi vào Database
     try {
         const albumRes = await pool.query('SELECT title, price FROM albums WHERE id = $1', [albumId]);
-        
+
         if (albumRes.rowCount === 0) {
             return ctx.reply(`⚠️ Không tìm thấy Album nào có ID là ${albumId} trong kho hàng!`);
         }
@@ -1116,9 +1116,9 @@ bot.command('adduserbuy', async (ctx) => {
              VALUES ($1, $2, $3, NOW())`,
             [targetUserId, albumId, targetAlbum.price]
         );
-        
+
         // Dọn dẹp tin nhắn chứa lệnh của sếp
-        ctx.deleteMessage().catch(() => {});
+        ctx.deleteMessage().catch(() => { });
 
         // Báo cáo thành công
         await ctx.reply(`✅ Tuyệt vời sếp ơi! Đã cấp quyền sở hữu album:\n🎥 **${targetAlbum.title}** (ID: ${albumId})\n👤 Cho khách hàng: **${targetName}** (ID: ${targetUserId}) thành công! ~(=^‥^)/`, { parse_mode: 'Markdown' });
