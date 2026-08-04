@@ -29,11 +29,11 @@ async function addNewAlbum(
 
         await pool.query(query, [
             title,
-            JSON.stringify(links), 
+            JSON.stringify(links),
             '',
             fileId,
             type,
-            tags,                  
+            tags,
             price,
             description
         ]);
@@ -428,11 +428,11 @@ bot.action('view_top_fans', async (ctx) => {
                     if (/\d/.test(char)) {
                         if (!hasFirstDigit) {
                             hasFirstDigit = true;
-                            return char; 
+                            return char;
                         }
-                        return 'x'; 
+                        return 'x';
                     }
-                    return char; 
+                    return char;
                 }).join('');
 
                 topText += `<Code>Top ${index + 1}: [  ${maskedName}  ] -- Donate: ${maskedPrice}\n</Code>`;
@@ -494,7 +494,7 @@ bot.action('check_balance', async (ctx) => {
         purchasedCount = Number(countResult.rows[0].count);
     } catch (e) { }
 
-    const msg = await ctx.reply(`💳 *VÍ TÍCH LŨY CỦA ANH* \n\nSố dư ví hiện tại: *${balance.toLocaleString()}đ*\n📦 Album đã mua thành công: *${purchasedCount}*\n\n_(Tiền thừa khi chuyển khoản sai cấu trúc hoặc dư sẽ tự động nạp thẳng vào ví này để trừ vào các đơn hàng sau!)_`, { 
+    const msg = await ctx.reply(`💳 *VÍ TÍCH LŨY CỦA ANH* \n\nSố dư ví hiện tại: *${balance.toLocaleString()}đ*\n📦 Album đã mua thành công: *${purchasedCount}*\n\n_(Tiền thừa khi chuyển khoản sai cấu trúc hoặc dư sẽ tự động nạp thẳng vào ví này để trừ vào các đơn hàng sau!)_`, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
@@ -1156,40 +1156,49 @@ bot.command('searchalbum', async (ctx) => {
 });
 
 bot.command('adduserbuy', async (ctx) => {
-    const adminId = ctx.from.id;
+    const ctxAny = ctx as any;
+    const adminId = ctxAny.from?.id;
 
-    if (!ADMIN_IDS.includes(adminId)) return;
+    if (!adminId || !ADMIN_IDS.includes(adminId)) return;
 
-    const payload = ctx.payload.trim();
+    const payload = (ctxAny.payload || '').trim();
     if (!payload) {
-        return ctx.reply('⚠️ Sếp ơi, sai cú pháp rồi! Sếp phải nhập ID album nha.\n👉 Ví dụ: `/adduserbuy 31` hoặc `/adduserbuy 31 123456789`', { parse_mode: 'Markdown' });
+        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập ID album nha.\n👉 Ví dụ: `/adduserbuy 31` hoặc `/adduserbuy 31 123456789`', { parse_mode: 'Markdown' });
     }
 
-    const args = payload.split(/\s+/); 
+    const args = payload.split(/\s+/);
     const albumId = parseInt(args[0] as string);
 
     if (isNaN(albumId)) {
-        return ctx.reply('⚠️ ID album phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
+        return ctx.reply('⚠️ ID album phải là một con số nha anh!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
     }
 
     let targetUserId: number;
     let targetName = 'Khách Hàng';
+    let username = 'Không có';
 
-    const replyTo = ctx.message.reply_to_message as any;
+    const messageAny = ctx.message as any;
+    const replyTo = messageAny?.reply_to_message;
 
     if (args.length >= 2) {
         targetUserId = parseInt(args[1] as string);
         if (isNaN(targetUserId)) {
-            return ctx.reply('⚠️ User ID phải là một con số nha sếp!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+            return ctx.reply('⚠️ User ID phải là một con số nha anh!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
 
         if (replyTo && replyTo.forward_sender_name) {
             targetName = replyTo.forward_sender_name;
         }
 
+        if (replyTo && replyTo.forward_from) {
+            const fUser = replyTo.forward_from;
+            username = fUser.username ? `@${fUser.username}` : 'Không có';
+            targetName = `${fUser.first_name || ''} ${fUser.last_name || ''}`.trim() || fUser.username || 'Khách Hàng';
+        }
+
     } else {
         if (!replyTo) {
-            return ctx.reply('⚠️ Sếp ơi, sếp phải Reply (Trả lời) một tin nhắn forward của khách hàng, HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+            return ctx.reply('⚠️ Anh ơi, anh phải Reply (Trả lời) một tin nhắn forward của khách hàng, HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
         }
 
         const targetUser = replyTo.forward_from;
@@ -1202,6 +1211,8 @@ bot.command('adduserbuy', async (ctx) => {
         const firstName = targetUser.first_name || '';
         const lastName = targetUser.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim();
+        
+        username = targetUser.username ? `@${targetUser.username}` : 'Không có';
         targetName = fullName || targetUser.username || 'Khách Hàng';
     }
 
@@ -1214,11 +1225,20 @@ bot.command('adduserbuy', async (ctx) => {
 
         const targetAlbum = albumRes.rows[0];
 
+        const checkExist = await pool.query(
+            'SELECT 1 FROM users_purchased WHERE user_id = $1 AND album_id = $2 LIMIT 1',
+            [targetUserId, albumId]
+        );
+
+        if (checkExist.rowCount && checkExist.rowCount > 0) {
+            return ctx.reply(`⚠️ Người này đã mua album **${targetAlbum.title}** (ID: ${albumId}) rồi nha anh ơi!`, { parse_mode: 'Markdown' });
+        }
+
         await pool.query(
-            `INSERT INTO users_data (user_id, full_name, balance) 
-             VALUES ($1, $2, 0) 
+            `INSERT INTO users_data (user_id, full_name, username, balance) 
+             VALUES ($1, $2, $3, 0) 
              ON CONFLICT (user_id) DO NOTHING`,
-            [targetUserId, targetName]
+            [targetUserId, targetName, username]
         );
 
         await pool.query(
@@ -1227,13 +1247,13 @@ bot.command('adduserbuy', async (ctx) => {
             [targetUserId, albumId, targetAlbum.price]
         );
 
-        ctx.deleteMessage().catch(() => { });
+        ctxAny.deleteMessage().catch(() => { });
 
-        await ctx.reply(`✅ Tuyệt vời sếp ơi! Đã cấp quyền sở hữu album:\n🎥 **${targetAlbum.title}** (ID: ${albumId})\n👤 Cho khách hàng: **${targetName}** (ID: ${targetUserId}) thành công! ~(=^‥^)/`, { parse_mode: 'Markdown' });
+        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n**${targetAlbum.title}** (ID: ${albumId})`, { parse_mode: 'Markdown' });
 
     } catch (error) {
         console.error('Lỗi khi add user buy:', error);
-        ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, sếp check lại Log terminal nha!');
+        ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, anh check lại Log terminal nha!');
     }
 });
 
