@@ -1249,8 +1249,7 @@ bot.command('adduserbuy', async (ctx) => {
 
         ctxAny.deleteMessage().catch(() => { });
 
-        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n**${targetAlbum.title}** (ID: ${albumId})`, { parse_mode: 'Markdown' });
-
+        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n<b>${targetAlbum.title}</b> (ID: ${albumId})`, { parse_mode: 'HTML' });
     } catch (error) {
         console.error('Lỗi khi add user buy:', error);
         ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, anh check lại Log terminal nha!');
