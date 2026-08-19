@@ -344,6 +344,7 @@ const getMainMenuKeyboard = () => ({
         [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
         [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
         [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
+        [{ text: '🚿 Clip tắm FREE (Khách VIP)', callback_data: 'view_vip_clip' }],
         [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
     ]
 });
@@ -417,7 +418,7 @@ bot.action('view_top_fans', async (ctx) => {
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
 
-                const maskedName = rawName.substring(0, 2) + 'xxx';
+                const maskedName = rawName.substring(0, 2) + '<ins>xxx</ins>';
 
                 const spent = parseInt(u.total_spent) || 0;
 
@@ -435,7 +436,7 @@ bot.action('view_top_fans', async (ctx) => {
                     return char;
                 }).join('');
 
-                topText += `<Code>Top ${index + 1}: [  ${maskedName}  ] -- Donate: ${maskedPrice}\n</Code>`;
+                topText += `<Code>Top ${index + 1}: [  ${maskedName}  ] -- Donate: ${maskedPrice}\n\n</Code>`;
             });
         }
 
@@ -451,6 +452,46 @@ bot.action('view_top_fans', async (ctx) => {
 
     } catch (error) {
         console.error('Lỗi view_top_fans:', error);
+        const msg = await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
+        await addSystemMessageId(userId, msg.message_id);
+    }
+});
+
+bot.action('view_vip_clip', async (ctx) => {
+    try { await ctx.answerCbQuery(); } catch (e) { }
+    const userId = ctx.from?.id;
+    if (!userId) return;
+
+    await cleanUserChatHistory(ctx, userId);
+    await ctx.replyWithChatAction('upload_video').catch(() => { });
+
+    try {
+        const query = `SELECT SUM(price) as total_spent FROM users_purchased WHERE user_id = $1`;
+        const res = await pool.query(query, [userId]);
+        const totalSpent = parseInt(res.rows[0].total_spent) || 0;
+
+        let fileId = '';
+        let captionText = '';
+
+        if (totalSpent < 1000000) {
+            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgFlaoXZ-BN3k-5U4MjLRG0y_QKtJtQAAr8fAAI9mTBU-guKLCBuILQ9BA';
+            captionText = 'Pé kiểm tra chưa thấy anh đạt đủ điều kiện nhận video Free này ạ!';
+        } else {
+            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgFoaoXaeRhxribCF1ITNm2BRW8YLIoAAsIfAAI9mTBUm1DcUcvpu1Q9BA';
+            captionText = 'Pé gửi anh iu aạa. Cám ơn anh iu đã luôn tin tưởng và ủng hộ pé ~~ Moah moahhh ~~ ❤️❤️❤️';
+        }
+
+        const msg = await ctx.replyWithVideo(fileId, {
+            caption: captionText,
+            reply_markup: {
+                inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+            }
+        });
+        
+        await addSystemMessageId(userId, msg.message_id);
+
+    } catch (error) {
+        console.error('Lỗi check VIP clip:', error);
         const msg = await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
         await addSystemMessageId(userId, msg.message_id);
     }
@@ -1249,7 +1290,8 @@ bot.command('adduserbuy', async (ctx) => {
 
         ctxAny.deleteMessage().catch(() => { });
 
-        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n<b>${targetAlbum.title}</b> (ID: ${albumId})`, { parse_mode: 'HTML' });
+        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n**${targetAlbum.title}** (ID: ${albumId})`, { parse_mode: 'Markdown' });
+
     } catch (error) {
         console.error('Lỗi khi add user buy:', error);
         ctx.reply('❌ Có lỗi nghiêm trọng khi ghi vào Database, anh check lại Log terminal nha!');
