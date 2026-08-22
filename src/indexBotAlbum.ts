@@ -1204,54 +1204,53 @@ bot.command('adduserbuy', async (ctx) => {
 
     const payload = (ctxAny.payload || '').trim();
     if (!payload) {
-        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập User ID và các ID album nha.\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
+        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập ID album nha.\n👉 Ví dụ: <code>/adduserbuy 42</code> hoặc <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
     }
 
     const args = payload.split(/\s+/);
-    let targetUserId: number;
+    let targetUserId: number | undefined;
     let albumIds: number[] = [];
+
+    for (const arg of args) {
+        const num = parseInt(arg);
+        if (!isNaN(num)) {
+            if (num > 100000) {
+                targetUserId = num;
+            } else {
+                albumIds.push(num);
+            }
+        }
+    }
+
+    albumIds = [...new Set(albumIds)];
+
+    if (albumIds.length === 0) {
+        return ctx.reply('⚠️ Anh chưa nhập ID album nào để thêm cả!\n👉 Ví dụ: <code>/adduserbuy 42 8 12</code>', { parse_mode: 'HTML' });
+    }
+
     let targetName = 'Khách Hàng';
     let username = 'Không có';
 
     const messageAny = ctx.message as any;
     const replyTo = messageAny?.reply_to_message;
 
-    const firstArg = parseInt(args[0] as string);
-
-    if (firstArg > 100000) {
-        targetUserId = firstArg;
-        albumIds = args.slice(1).map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
-
-        if (replyTo && replyTo.forward_from) {
+    if (replyTo) {
+        if (replyTo.forward_from) {
             const fUser = replyTo.forward_from;
+            if (!targetUserId) targetUserId = fUser.id;
             username = fUser.username ? `@${fUser.username}` : 'Không có';
             targetName = `${fUser.first_name || ''} ${fUser.last_name || ''}`.trim() || fUser.username || 'Khách Hàng';
-        } else if (replyTo && replyTo.forward_sender_name) {
+        } else if (replyTo.forward_sender_name) {
             targetName = replyTo.forward_sender_name;
         }
-    } else {
-        if (!replyTo) {
-            return ctx.reply('⚠️ Anh ơi, anh phải Reply tin nhắn forward HOẶC nhập User ID ở đầu tiên nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
-        }
-
-        const targetUser = replyTo.forward_from;
-
-        if (!targetUser) {
-            return ctx.reply('⚠️ User ẩn ID forward rồi, anh phải nhập trực tiếp User ID nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
-        }
-
-        targetUserId = targetUser.id;
-        const firstName = targetUser.first_name || '';
-        const lastName = targetUser.last_name || '';
-        const fullName = `${firstName} ${lastName}`.trim();
-
-        username = targetUser.username ? `@${targetUser.username}` : 'Không có';
-        targetName = fullName || targetUser.username || 'Khách Hàng';
-        albumIds = args.map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
     }
 
-    if (albumIds.length === 0) {
-        return ctx.reply('⚠️ Anh chưa nhập ID album nào để thêm cả!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
+    if (!targetUserId) {
+        if (!replyTo) {
+            return ctx.reply('⚠️ Anh ơi, anh phải Reply tin nhắn forward HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
+        } else {
+            return ctx.reply('⚠️ User ẩn ID forward rồi, anh nhập lại lệnh và thêm User ID vào nha.\n👉 Ví dụ: <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
+        }
     }
 
     try {
