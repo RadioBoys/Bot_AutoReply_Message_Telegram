@@ -1204,77 +1204,57 @@ bot.command('adduserbuy', async (ctx) => {
 
     const payload = (ctxAny.payload || '').trim();
     if (!payload) {
-        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập ID album nha.\n👉 Ví dụ: `/adduserbuy 31` hoặc `/adduserbuy 31 123456789`', { parse_mode: 'Markdown' });
+        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập User ID và các ID album nha.\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
     }
 
     const args = payload.split(/\s+/);
-    const albumId = parseInt(args[0] as string);
-
-    if (isNaN(albumId)) {
-        return ctx.reply('⚠️ ID album phải là một con số nha anh!\n👉 Ví dụ: `/adduserbuy 31`', { parse_mode: 'Markdown' });
-    }
-
     let targetUserId: number;
+    let albumIds: number[] = [];
     let targetName = 'Khách Hàng';
     let username = 'Không có';
 
     const messageAny = ctx.message as any;
     const replyTo = messageAny?.reply_to_message;
 
-    if (args.length >= 2) {
-        targetUserId = parseInt(args[1] as string);
-        if (isNaN(targetUserId)) {
-            return ctx.reply('⚠️ User ID phải là một con số nha anh!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
-        }
+    const firstArg = parseInt(args[0] as string);
 
-        if (replyTo && replyTo.forward_sender_name) {
-            targetName = replyTo.forward_sender_name;
-        }
+    if (firstArg > 100000) {
+        targetUserId = firstArg;
+        albumIds = args.slice(1).map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
 
         if (replyTo && replyTo.forward_from) {
             const fUser = replyTo.forward_from;
             username = fUser.username ? `@${fUser.username}` : 'Không có';
             targetName = `${fUser.first_name || ''} ${fUser.last_name || ''}`.trim() || fUser.username || 'Khách Hàng';
+        } else if (replyTo && replyTo.forward_sender_name) {
+            targetName = replyTo.forward_sender_name;
         }
-
     } else {
         if (!replyTo) {
-            return ctx.reply('⚠️ Anh ơi, anh phải Reply (Trả lời) một tin nhắn forward của khách hàng, HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+            return ctx.reply('⚠️ Anh ơi, anh phải Reply tin nhắn forward HOẶC nhập User ID ở đầu tiên nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
         }
 
         const targetUser = replyTo.forward_from;
 
         if (!targetUser) {
-            return ctx.reply('⚠️ User ẩn ID forward rồi, nhập lại lệnh `/adduserbuy [id album] [userid]` nhé.\n👉 Ví dụ: `/adduserbuy 54 5393831530`', { parse_mode: 'Markdown' });
+            return ctx.reply('⚠️ User ẩn ID forward rồi, anh phải nhập trực tiếp User ID nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
         }
 
         targetUserId = targetUser.id;
         const firstName = targetUser.first_name || '';
         const lastName = targetUser.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim();
-        
+
         username = targetUser.username ? `@${targetUser.username}` : 'Không có';
         targetName = fullName || targetUser.username || 'Khách Hàng';
+        albumIds = args.map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
+    }
+
+    if (albumIds.length === 0) {
+        return ctx.reply('⚠️ Anh chưa nhập ID album nào để thêm cả!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
     }
 
     try {
-        const albumRes = await pool.query('SELECT title, price FROM albums WHERE id = $1', [albumId]);
-
-        if (albumRes.rowCount === 0) {
-            return ctx.reply(`⚠️ Không tìm thấy Album nào có ID là ${albumId} trong kho hàng!`);
-        }
-
-        const targetAlbum = albumRes.rows[0];
-
-        const checkExist = await pool.query(
-            'SELECT 1 FROM users_purchased WHERE user_id = $1 AND album_id = $2 LIMIT 1',
-            [targetUserId, albumId]
-        );
-
-        if (checkExist.rowCount && checkExist.rowCount > 0) {
-            return ctx.reply(`⚠️ Người này đã mua album **${targetAlbum.title}** (ID: ${albumId}) rồi nha anh ơi!`, { parse_mode: 'Markdown' });
-        }
-
         await pool.query(
             `INSERT INTO users_data (user_id, full_name, username, balance) 
              VALUES ($1, $2, $3, 0) 
@@ -1282,15 +1262,51 @@ bot.command('adduserbuy', async (ctx) => {
             [targetUserId, targetName, username]
         );
 
-        await pool.query(
-            `INSERT INTO users_purchased (user_id, album_id, price, purchased_at) 
-             VALUES ($1, $2, $3, NOW())`,
-            [targetUserId, albumId, targetAlbum.price]
-        );
+        let successAlbums: string[] = [];
+        let failedAlbums: string[] = [];
+
+        for (const albId of albumIds) {
+            const albumRes = await pool.query('SELECT title, price FROM albums WHERE id = $1', [albId]);
+
+            if (albumRes.rowCount === 0) {
+                failedAlbums.push(`ID ${albId}: Không có trong kho`);
+                continue;
+            }
+
+            const targetAlbum = albumRes.rows[0];
+
+            const checkExist = await pool.query(
+                'SELECT 1 FROM users_purchased WHERE user_id = $1 AND album_id = $2 LIMIT 1',
+                [targetUserId, albId]
+            );
+
+            if (checkExist.rowCount && checkExist.rowCount > 0) {
+                failedAlbums.push(`ID ${albId}: Đã sở hữu (${targetAlbum.title})`);
+                continue;
+            }
+
+            const insertQuery = `INSERT INTO users_purchased (user_id, album_id, price, payment_method) VALUES ($1, $2, $3, $4)`;
+            await pool.query(insertQuery, [targetUserId, albId, targetAlbum.price, 'manual']);
+
+            successAlbums.push(`<b>${targetAlbum.title}</b> (ID: ${albId})`);
+        }
 
         ctxAny.deleteMessage().catch(() => { });
 
-        await ctx.reply(`✅ Đã cấp quyền sở hữu album:\n\n👤 Khách hàng: ${targetName}\n🏷️ Username: ${username}\n🆔 ID: ${targetUserId}\n🎥 Album mua: \n**${targetAlbum.title}** (ID: ${albumId})`, { parse_mode: 'Markdown' });
+        let replyMsg = `✅ <b>Đã xử lý cấp quyền sở hữu album:</b>\n\n`;
+        replyMsg += `👤 Khách hàng: ${targetName}\n`;
+        replyMsg += `🏷️ Username: ${username}\n`;
+        replyMsg += `🆔 ID: ${targetUserId}\n\n`;
+
+        if (successAlbums.length > 0) {
+            replyMsg += `🎉 <b>Thêm THÀNH CÔNG:</b>\n- ` + successAlbums.join('\n- ') + `\n\n`;
+        }
+        
+        if (failedAlbums.length > 0) {
+            replyMsg += `⚠️ <b>Thêm THẤT BẠI:</b>\n- ` + failedAlbums.join('\n- ') + `\n`;
+        }
+
+        await ctx.reply(replyMsg, { parse_mode: 'HTML' });
 
     } catch (error) {
         console.error('Lỗi khi add user buy:', error);
