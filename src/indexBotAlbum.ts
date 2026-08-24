@@ -23,8 +23,8 @@ async function addNewAlbum(
 ): Promise<boolean> {
     try {
         const query = `
-            INSERT INTO albums (title, link_album, path, fileid, type, tags, price, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO albums (id, title, link_album, path, fileid, type, tags, price, description)
+            VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM albums), $1, $2, $3, $4, $5, $6, $7, $8)
         `;
 
         await pool.query(query, [
