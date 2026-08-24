@@ -164,6 +164,23 @@ async function clearPendingOrder(userId: number) {
     }
 }
 
+async function getMonthlyTransactionCount(): Promise<number> {
+    try {
+        const query = `
+            SELECT COUNT(*) 
+            FROM users_purchased 
+            WHERE EXTRACT(MONTH FROM purchased_at) = EXTRACT(MONTH FROM CURRENT_DATE)
+              AND EXTRACT(YEAR FROM purchased_at) = EXTRACT(YEAR FROM CURRENT_DATE)
+              AND payment_method = 'sepay'
+        `;
+        const res = await pool.query(query);
+        return parseInt(res.rows[0].count) || 0;
+    } catch (error) {
+        console.error("Lỗi đếm số giao dịch tháng:", error);
+        return 0;
+    }
+}
+
 async function addWarnMessageId(userId: number, warnMsgId: number) {
     try {
         const query = `
@@ -487,7 +504,7 @@ bot.action('view_vip_clip', async (ctx) => {
                 inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
             }
         });
-        
+
         await addSystemMessageId(userId, msg.message_id);
 
     } catch (error) {
@@ -862,18 +879,50 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
         return;
     }
 
+    //     const finalPayAmount = albumPriceNum - currentBalance;
+    //     const accountNumber = "8288977";
+    //     const qrUrl = `https://vietqr.app/img?bank=ACB&acc=8288977&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=NGUYEN%20NGOC%20THAI`;
+
+    //     const messageText = `🔥 *ĐẶT MUA ALBUM: ${targetAlbum.title}*
+    // 💰 *Giá gốc:* ${targetAlbum.price}
+    // 💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
+    // 💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
+    // --------------------------------------
+    // 💳 *Ngân hàng:* ACB
+    // 👤 *Số tài khoản:* \`${accountNumber}\`
+    // 👤 *Chủ tài khoản:* NGUYEN NGOC THAI
+    // 📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
+    // --------------------------------------
+    // Stk của quản lý em nên anh không cần lo nè ❤️
+    // ⚠️ *Lưu ý*: Ghi đúng nội dung chuyển khoản nha anh ~`;
+
     const finalPayAmount = albumPriceNum - currentBalance;
-    const accountNumber = "8288977";
-    const qrUrl = `https://vietqr.app/img?bank=ACB&acc=8288977&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=NGUYEN%20NGOC%20THAI`;
+
+    // Đếm xem tháng này bán được bao nhiêu đơn rồi
+    const currentTxCount = await getMonthlyTransactionCount();
+    const LIMIT_SEPAY_1 = 45; // Ngưỡng an toàn (tránh vọt quá 50)
+
+    let bankName = "ACB";
+    let accountNumber = "8288977";
+    let accountHolder = "NGUYEN NGOC THAI";
+
+    // Nếu vọt ngưỡng 45 đơn, tự động "bẻ lái" sang MBBank (SePay 2)
+    if (currentTxCount >= LIMIT_SEPAY_1) {
+        bankName = "MB"; // Tên mã của MBBank trên VietQR
+        accountNumber = "0327091202";
+        accountHolder = "NGUYEN NGOC THAI";
+    }
+
+    const qrUrl = `https://vietqr.app/img?bank=${bankName}&acc=${accountNumber}&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=${encodeURIComponent(accountHolder)}`;
 
     const messageText = `🔥 *ĐẶT MUA ALBUM: ${targetAlbum.title}*
 💰 *Giá gốc:* ${targetAlbum.price}
 💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
 💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
 --------------------------------------
-💳 *Ngân hàng:* ACB
+💳 *Ngân hàng:* ${bankName === 'MB' ? 'MBBank' : 'ACB'}
 👤 *Số tài khoản:* \`${accountNumber}\`
-👤 *Chủ tài khoản:* NGUYEN NGOC THAI
+👤 *Chủ tài khoản:* ${accountHolder}
 📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
 --------------------------------------
 Stk của quản lý em nên anh không cần lo nè ❤️
@@ -1204,53 +1253,54 @@ bot.command('adduserbuy', async (ctx) => {
 
     const payload = (ctxAny.payload || '').trim();
     if (!payload) {
-        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập ID album nha.\n👉 Ví dụ: <code>/adduserbuy 42</code> hoặc <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
+        return ctx.reply('⚠️ Anh ơi, sai cú pháp rồi! Anh phải nhập User ID và các ID album nha.\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
     }
 
     const args = payload.split(/\s+/);
-    let targetUserId: number | undefined;
+    let targetUserId: number;
     let albumIds: number[] = [];
-
-    for (const arg of args) {
-        const num = parseInt(arg);
-        if (!isNaN(num)) {
-            if (num > 100000) {
-                targetUserId = num;
-            } else {
-                albumIds.push(num);
-            }
-        }
-    }
-
-    albumIds = [...new Set(albumIds)];
-
-    if (albumIds.length === 0) {
-        return ctx.reply('⚠️ Anh chưa nhập ID album nào để thêm cả!\n👉 Ví dụ: <code>/adduserbuy 42 8 12</code>', { parse_mode: 'HTML' });
-    }
-
     let targetName = 'Khách Hàng';
     let username = 'Không có';
 
     const messageAny = ctx.message as any;
     const replyTo = messageAny?.reply_to_message;
 
-    if (replyTo) {
-        if (replyTo.forward_from) {
+    const firstArg = parseInt(args[0] as string);
+
+    if (firstArg > 100000) {
+        targetUserId = firstArg;
+        albumIds = args.slice(1).map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
+
+        if (replyTo && replyTo.forward_from) {
             const fUser = replyTo.forward_from;
-            if (!targetUserId) targetUserId = fUser.id;
             username = fUser.username ? `@${fUser.username}` : 'Không có';
             targetName = `${fUser.first_name || ''} ${fUser.last_name || ''}`.trim() || fUser.username || 'Khách Hàng';
-        } else if (replyTo.forward_sender_name) {
+        } else if (replyTo && replyTo.forward_sender_name) {
             targetName = replyTo.forward_sender_name;
         }
+    } else {
+        if (!replyTo) {
+            return ctx.reply('⚠️ Anh ơi, anh phải Reply tin nhắn forward HOẶC nhập User ID ở đầu tiên nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
+        }
+
+        const targetUser = replyTo.forward_from;
+
+        if (!targetUser) {
+            return ctx.reply('⚠️ User ẩn ID forward rồi, anh phải nhập trực tiếp User ID nha!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
+        }
+
+        targetUserId = targetUser.id;
+        const firstName = targetUser.first_name || '';
+        const lastName = targetUser.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim();
+
+        username = targetUser.username ? `@${targetUser.username}` : 'Không có';
+        targetName = fullName || targetUser.username || 'Khách Hàng';
+        albumIds = args.map((x: string) => parseInt(x)).filter((x: number) => !isNaN(x));
     }
 
-    if (!targetUserId) {
-        if (!replyTo) {
-            return ctx.reply('⚠️ Anh ơi, anh phải Reply tin nhắn forward HOẶC nhập trực tiếp User ID nha!\n👉 Ví dụ: <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
-        } else {
-            return ctx.reply('⚠️ User ẩn ID forward rồi, anh nhập lại lệnh và thêm User ID vào nha.\n👉 Ví dụ: <code>/adduserbuy 42 8 12 123456789</code>', { parse_mode: 'HTML' });
-        }
+    if (albumIds.length === 0) {
+        return ctx.reply('⚠️ Anh chưa nhập ID album nào để thêm cả!\n👉 Ví dụ: <code>/adduserbuy 12345678 42 12 55</code>', { parse_mode: 'HTML' });
     }
 
     try {
