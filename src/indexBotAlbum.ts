@@ -1139,7 +1139,7 @@ Anh chạm vào khối chữ bên dưới để copy nhanh cú pháp mẫu nha:
 - Link: ["Link 1", "Link 2"]
 - File ID: Nhập ID file
 - Type: photo hoặc video
-- Tags: ["Masterbation", "Lesbian", "HaveSex", "BDSM", "Squirt", "Public", "Anal", "Scat"]
+- Tags: ["Masturbation", "Lesbian", "HaveSex", "BDSM", "Squirt", "Public", "Anal", "Scat"]
 - Price: 50000
 - Description: Nhập mô tả...
 \`\`\`
