@@ -361,7 +361,7 @@ const getMainMenuKeyboard = () => ({
         [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
         [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
         [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
-        [{ text: '🚿 Clip tắm FREE (Khách VIP)', callback_data: 'view_vip_clip' }],
+        [{ text: '🚿 Clip triệt lông của pé (Khách VIP)', callback_data: 'view_vip_clip' }],
         [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
     ]
 });
