@@ -490,11 +490,11 @@ bot.action('view_vip_clip', async (ctx) => {
         let fileId = '';
         let captionText = '';
 
-        if (totalSpent < 1000000) {
-            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgFlaoXZ-BN3k-5U4MjLRG0y_QKtJtQAAr8fAAI9mTBU-guKLCBuILQ9BA';
-            captionText = 'Pé kiểm tra chưa thấy anh đạt đủ điều kiện nhận video Free này ạ!';
+        if (totalSpent < 1) {
+            fileId = 'AgACAgUAAyEFAAMBAAE_PMoAAgGKapALqB57P2rrG2xbXeKgJHvLZGQAAicUaxuNw4BUIkR1Rqa3Df0BAAMCAAN4AAM9BA';
+            captionText = 'Pé kiểm tra chưa thấy anh chưa ủng hộ Album nào của pé cả.! \n\nAnh ủng hộ pé ít nhất 1 Album thì mới được xem clip VIP này a nhé.❤️';
         } else {
-            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgFoaoXaeRhxribCF1ITNm2BRW8YLIoAAsIfAAI9mTBUm1DcUcvpu1Q9BA';
+            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGHapAIsQ5WwZ9JTfI9R5SdIf02ikMAAi8lAAKNw4BUT188Pprd5KU9BA';
             captionText = 'Pé gửi anh iu aạa. Cám ơn anh iu đã luôn tin tưởng và ủng hộ pé ~~ Moah moahhh ~~ ❤️❤️❤️';
         }
 
@@ -878,23 +878,6 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
         return;
     }
-
-    //     const finalPayAmount = albumPriceNum - currentBalance;
-    //     const accountNumber = "8288977";
-    //     const qrUrl = `https://vietqr.app/img?bank=ACB&acc=8288977&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=NGUYEN%20NGOC%20THAI`;
-
-    //     const messageText = `🔥 *ĐẶT MUA ALBUM: ${targetAlbum.title}*
-    // 💰 *Giá gốc:* ${targetAlbum.price}
-    // 💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
-    // 💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
-    // --------------------------------------
-    // 💳 *Ngân hàng:* ACB
-    // 👤 *Số tài khoản:* \`${accountNumber}\`
-    // 👤 *Chủ tài khoản:* NGUYEN NGOC THAI
-    // 📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
-    // --------------------------------------
-    // Stk của quản lý em nên anh không cần lo nè ❤️
-    // ⚠️ *Lưu ý*: Ghi đúng nội dung chuyển khoản nha anh ~`;
 
     const finalPayAmount = albumPriceNum - currentBalance;
 
