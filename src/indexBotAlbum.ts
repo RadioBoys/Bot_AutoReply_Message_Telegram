@@ -491,7 +491,7 @@ bot.action('view_vip_clip', async (ctx) => {
         let captionText = '';
 
         if (totalSpent < 1) {
-            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGNapAOhCx7Vfqfgb_SqNi6szwbxWMAAkAlAAKNw4BUfZcKNCOYCCA9BA';
+            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGfapK95nRQUCm9oC-xvhYoeM7G38MAArwlAAIkHJlU9vW3sw4jjxk9BA';
             captionText = 'Pé kiểm tra chưa thấy anh chưa ủng hộ Album nào của pé cả.! \n\nAnh ủng hộ pé ít nhất 1 Album thì mới được xem clip VIP này a nhé.❤️';
         } else {
             fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGHapAIsQ5WwZ9JTfI9R5SdIf02ikMAAi8lAAKNw4BUT188Pprd5KU9BA';
