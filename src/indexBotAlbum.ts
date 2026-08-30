@@ -912,7 +912,7 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
     // Đếm xem tháng này bán được bao nhiêu đơn rồi
     const currentTxCount = await getMonthlyTransactionCount();
-    const LIMIT_SEPAY_1 = 45; // Ngưỡng an toàn (tránh vọt quá 50)
+    const LIMIT_SEPAY_1 = 50; // Ngưỡng an toàn (tránh vọt quá 50)
 
     let bankName = "ACB";
     let accountNumber = "8288977";
