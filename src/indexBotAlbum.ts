@@ -912,13 +912,13 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
     // Đếm xem tháng này bán được bao nhiêu đơn rồi
     const currentTxCount = await getMonthlyTransactionCount();
-    const LIMIT_SEPAY_1 = 50; // Ngưỡng an toàn (tránh vọt quá 50)
+    const LIMIT_SEPAY_1 = 48; // Ngưỡng an toàn (tránh vọt quá 50)
 
     let bankName = "ACB";
     let accountNumber = "8288977";
     let accountHolder = "NGUYEN NGOC THAI";
 
-    // Nếu vọt ngưỡng 45 đơn, tự động "bẻ lái" sang MBBank (SePay 2)
+    // Nếu vọt ngưỡng 48 đơn, tự động "bẻ lái" sang MBBank (SePay 2)
     if (currentTxCount >= LIMIT_SEPAY_1) {
         bankName = "MB"; // Tên mã của MBBank trên VietQR
         accountNumber = "0327091202";
