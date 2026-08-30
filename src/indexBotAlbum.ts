@@ -353,18 +353,30 @@ bot.use(async (ctx, next) => {
     await next();
 });
 
-const getMainMenuKeyboard = () => ({
-    inline_keyboard: [
-        [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
-        [{ text: '👙 Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
-        [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
-        [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
-        [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
-        [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
-        [{ text: '🚿 Clip triệt lông của pé (Khách VIP)', callback_data: 'view_vip_clip' }],
-        [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
-    ]
-});
+async function getMainMenuKeyboard() {
+    let vipButtonText = 'Event CLIP VIP FREE của pé';
+    try {
+        const eventRes = await pool.query('SELECT title FROM events WHERE is_active = true ORDER BY id DESC LIMIT 1');
+        if (eventRes.rows.length > 0 && eventRes.rows[0].title) {
+            vipButtonText = eventRes.rows[0].title;
+        }
+    } catch (e) {
+        console.error("Lỗi lấy title event:", e);
+    }
+
+    return {
+        inline_keyboard: [
+            [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
+            [{ text: '👙 Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
+            [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
+            [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
+            [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
+            [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
+            [{ text: vipButtonText, callback_data: 'view_vip_clip' }],
+            [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
+        ]
+    };
+}
 
 bot.start(async (ctx) => {
     const hasPermission = await isAdminOrPrivate(ctx);
@@ -378,7 +390,7 @@ bot.start(async (ctx) => {
     const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
     const sendOptions = {
         caption: 'Hi anh. Anh mún chọn gì nè??',
-        reply_markup: getMainMenuKeyboard()
+        reply_markup: await getMainMenuKeyboard()
     };
 
     try {
@@ -524,7 +536,7 @@ bot.action('view_services', async (ctx) => {
     const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
     const sendOptions = {
         caption: 'Hi anh. Anh mún chọn gì nè??',
-        reply_markup: getMainMenuKeyboard()
+        reply_markup: await getMainMenuKeyboard()
     };
 
     try {
