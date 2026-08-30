@@ -495,19 +495,36 @@ bot.action('view_vip_clip', async (ctx) => {
     await ctx.replyWithChatAction('upload_video').catch(() => { });
 
     try {
-        const query = `SELECT SUM(price) as total_spent FROM users_purchased WHERE user_id = $1`;
-        const res = await pool.query(query, [userId]);
-        const totalSpent = parseInt(res.rows[0].total_spent) || 0;
+        // 1. Kiểm tra xem có event nào đang BẬT hay không
+        const eventRes = await pool.query('SELECT * FROM events WHERE is_active = true ORDER BY id DESC LIMIT 1');
+        
+        if (eventRes.rows.length === 0) {
+            const msg = await ctx.reply('Hiện tại pé Nyan chưa có event nào cả ❤️', {
+                reply_markup: {
+                    inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+                }
+            });
+            await addSystemMessageId(userId, msg.message_id);
+            return;
+        }
+
+        const currentEvent = eventRes.rows[0];
+        const requiredSpent = parseInt(currentEvent.condition_spent) || 0;
+
+        // 2. Tính tổng tiền chi tiêu của user
+        const userSpendRes = await pool.query('SELECT SUM(price) as total_spent FROM users_purchased WHERE user_id = $1', [userId]);
+        const totalSpent = parseInt(userSpendRes.rows[0].total_spent) || 0;
 
         let fileId = '';
         let captionText = '';
 
-        if (totalSpent < 1) {
-            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGfapK95nRQUCm9oC-xvhYoeM7G38MAArwlAAIkHJlU9vW3sw4jjxk9BA';
-            captionText = 'Pé kiểm tra chưa thấy anh chưa ủng hộ Album nào của pé cả.! \n\nAnh ủng hộ pé ít nhất 1 Album thì mới được xem clip VIP này a nhé.❤️';
+        // 3. So sánh với điều kiện của event
+        if (totalSpent < requiredSpent) {
+            fileId = currentEvent.fileid_demo;
+            captionText = currentEvent.description_demo;
         } else {
-            fileId = 'BAACAgUAAyEFAAMBAAE_PMoAAgGHapAIsQ5WwZ9JTfI9R5SdIf02ikMAAi8lAAKNw4BUT188Pprd5KU9BA';
-            captionText = 'Pé gửi anh iu aạa. Cám ơn anh iu đã luôn tin tưởng và ủng hộ pé ~~ Moah moahhh ~~ ❤️❤️❤️';
+            fileId = currentEvent.fileid_video;
+            captionText = currentEvent.description_video;
         }
 
         const msg = await ctx.replyWithVideo(fileId, {
@@ -520,7 +537,7 @@ bot.action('view_vip_clip', async (ctx) => {
         await addSystemMessageId(userId, msg.message_id);
 
     } catch (error) {
-        console.error('Lỗi check VIP clip:', error);
+        console.error('Lỗi check VIP clip event:', error);
         const msg = await ctx.reply('⚠️ Hệ thống đang bận... vui lòng thử lại sau ít phút.');
         await addSystemMessageId(userId, msg.message_id);
     }
