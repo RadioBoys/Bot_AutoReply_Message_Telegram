@@ -912,17 +912,34 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
     // Đếm xem tháng này bán được bao nhiêu đơn rồi
     const currentTxCount = await getMonthlyTransactionCount();
-    const LIMIT_SEPAY_1 = 48; // Ngưỡng an toàn (tránh vọt quá 50)
+    const LIMIT_SEPAY_1 = 50; // Ngưỡng an toàn (tránh vọt quá 50)
+    const LIMIT_SEPAY_2 = 100;
 
     let bankName = "ACB";
     let accountNumber = "8288977";
     let accountHolder = "NGUYEN NGOC THAI";
+    let bankDisplayName = "ACB";
 
-    // Nếu vọt ngưỡng 48 đơn, tự động "bẻ lái" sang MBBank (SePay 2)
-    if (currentTxCount >= LIMIT_SEPAY_1) {
-        bankName = "MB"; // Tên mã của MBBank trên VietQR
+    // Giai đoạn 3: > 96 giao dịch -> Quay lại ACB (dùng MacroDroid)
+    if (currentTxCount >= LIMIT_SEPAY_2) {
+        bankName = "ACB"; 
+        accountNumber = "8288977";
+        accountHolder = "NGUYEN NGOC THAI";
+        bankDisplayName = "ACB";
+    } 
+    // Giai đoạn 2: Từ 48 - 95 đơn -> Dùng SePay 2 (MBBank)
+    else if (currentTxCount >= LIMIT_SEPAY_1) {
+        bankName = "MB"; 
         accountNumber = "0327091202";
         accountHolder = "NGUYEN NGOC THAI";
+        bankDisplayName = "MBBank";
+    } 
+    // Giai đoạn 1: Dưới 48 đơn -> Dùng SePay 1 (ACB)
+    else {
+        bankName = "ACB";
+        accountNumber = "8288977";
+        accountHolder = "NGUYEN NGOC THAI";
+        bankDisplayName = "ACB";
     }
 
     const qrUrl = `https://vietqr.app/img?bank=${bankName}&acc=${accountNumber}&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=${encodeURIComponent(accountHolder)}`;
@@ -932,7 +949,7 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
 💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
 --------------------------------------
-💳 *Ngân hàng:* ${bankName === 'MB' ? 'MBBank' : 'ACB'}
+💳 *Ngân hàng:* ${bankDisplayName}
 👤 *Số tài khoản:* \`${accountNumber}\`
 👤 *Chủ tài khoản:* ${accountHolder}
 📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
@@ -965,13 +982,29 @@ const app = express();
 app.use(express.json());
 
 app.post('/webhook/bank', async (req, res) => {
+
+    console.log('\n=== 📥 NHẬN WEBHOOK TỪ BANK / MACRODROID ===');
+    console.log(req.body);
+    console.log('===============================================\n');
+
     res.status(200).json({ success: true });
 
     try {
-        const { content, transferAmount } = req.body;
-        const actualPaid = Number(transferAmount);
+        const content = (req.body.content || req.body.description || req.body.code || '').toString();
+        let actualPaid = Number(req.body.transferAmount || req.body.amount || 0);
 
         if (!content) return;
+
+        // Tự động bóc tách số tiền từ nội dung tin nhắn nếu webhook gửi từ MacroDroid
+        if (!actualPaid || isNaN(actualPaid)) {
+            // Bắt buộc phải có dấu + phía trước (VD: + 100,000) để tránh bắt nhầm số tài khoản
+            const matchedAmount = content.replace(/[,.]/g, '').match(/\+\s*(\d{4,12})/);
+            if (matchedAmount && matchedAmount[1]) {
+                actualPaid = Number(matchedAmount[1]);
+            }
+        }
+        
+        console.log(`[Webhook Check] Số tiền thực nhận: ${actualPaid}đ | Nội dung GD: ${content}`);
 
         const result = await pool.query(
             `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
@@ -994,8 +1027,12 @@ app.post('/webhook/bank', async (req, res) => {
             let rP = targetAlbum.price.toLowerCase().trim();
             let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
 
-            const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
+            // Đã xóa DANGEROUS FALLBACK (actualPaid = albumPrice) tại đây. 
+            // Bảo vệ hệ thống khỏi việc tự động cho free nếu regex không bắt được tiền.
 
+            console.log(`[Webhook Match] Mã HĐ: ${orderCode} | Cần thanh toán: ${albumPrice}đ | Nạp vào: ${actualPaid}đ`);
+
+            const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
             if (newTotalBalance >= albumPrice) {
                 const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
 
@@ -1036,7 +1073,7 @@ app.post('/webhook/bank', async (req, res) => {
                     );
                     await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
                 } catch (err: any) {
-                    console.error(err);
+                    console.error("Lỗi gửi link album webhook:", err);
                 }
 
                 await sendPurchaseReportToAdmin(customerChatId);
@@ -1048,7 +1085,7 @@ app.post('/webhook/bank', async (req, res) => {
                 let sentWarnMsg = null;
                 try {
                     sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
-                        `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN* \n\n` +
+                        `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN Hoặc SAI SỐ LƯỢNG* \n\n` +
                         `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
                         `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
                         `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
@@ -1056,7 +1093,7 @@ app.post('/webhook/bank', async (req, res) => {
                         { parse_mode: 'Markdown' }
                     );
                 } catch (err: any) {
-                    console.error(err);
+                    console.error("Lỗi gửi cảnh báo thiếu tiền webhook:", err);
                 }
 
                 if (sentWarnMsg) {
@@ -1066,7 +1103,7 @@ app.post('/webhook/bank', async (req, res) => {
             }
         }
     } catch (error) {
-        console.error(error);
+        console.error("Lỗi khi xử lý webhook ngân hàng:", error);
     }
 });
 
