@@ -983,10 +983,6 @@ app.use(express.json());
 
 app.post('/webhook/bank', async (req, res) => {
 
-    console.log('\n=== 📥 NHẬN WEBHOOK TỪ BANK / MACRODROID ===');
-    console.log(req.body);
-    console.log('===============================================\n');
-
     res.status(200).json({ success: true });
 
     try {
