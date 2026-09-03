@@ -497,7 +497,7 @@ bot.action('view_vip_clip', async (ctx) => {
     try {
         // 1. Kiểm tra xem có event nào đang BẬT hay không
         const eventRes = await pool.query('SELECT * FROM events WHERE is_active = true ORDER BY id DESC LIMIT 1');
-        
+
         if (eventRes.rows.length === 0) {
             const msg = await ctx.reply('Hiện tại pé Nyan chưa có event nào cả ❤️', {
                 reply_markup: {
@@ -921,19 +921,19 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     let bankDisplayName = "ACB";
 
     // Giai đoạn 3: > 96 giao dịch -> Quay lại ACB (dùng MacroDroid)
-    if (currentTxCount >= LIMIT_SEPAY_2) {
-        bankName = "ACB"; 
+    if (currentTxCount > LIMIT_SEPAY_2) {
+        bankName = "ACB";
         accountNumber = "8288977";
         accountHolder = "NGUYEN NGOC THAI";
         bankDisplayName = "ACB";
-    } 
+    }
     // Giai đoạn 2: Từ 48 - 95 đơn -> Dùng SePay 2 (MBBank)
-    else if (currentTxCount >= LIMIT_SEPAY_1) {
-        bankName = "MB"; 
+    else if (currentTxCount > LIMIT_SEPAY_1) {
+        bankName = "MB";
         accountNumber = "0327091202";
         accountHolder = "NGUYEN NGOC THAI";
         bankDisplayName = "MBBank";
-    } 
+    }
     // Giai đoạn 1: Dưới 48 đơn -> Dùng SePay 1 (ACB)
     else {
         bankName = "ACB";
@@ -984,106 +984,231 @@ app.use(express.json());
 app.post('/webhook/bank', async (req, res) => {
     res.status(200).json({ success: true });
 
-    try {
-        const { content, transferAmount } = req.body;
-        const actualPaid = Number(transferAmount);
+    const currentTxCount = await getMonthlyTransactionCount();
+    if (currentTxCount <= 100) {
+        try {
+            const { content, transferAmount } = req.body;
+            const actualPaid = Number(transferAmount);
 
-        if (!content) return;
+            if (!content) return;
 
-        const result = await pool.query(
-            `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
+            const result = await pool.query(
+                `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
              FROM users_data 
              WHERE order_code IS NOT NULL AND $1 ILIKE '%' || order_code || '%'`,
-            [content]
-        );
+                [content]
+            );
 
-        if (result.rows.length > 0) {
-            const userRow = result.rows[0];
-            const customerChatId = Number(userRow.user_id);
-            const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
-            const targetAlbumId = Number(userRow.pending_album_id);
-            const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
-            const orderCode = userRow.order_code;
+            if (result.rows.length > 0) {
+                const userRow = result.rows[0];
+                const customerChatId = Number(userRow.user_id);
+                const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
+                const targetAlbumId = Number(userRow.pending_album_id);
+                const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
+                const orderCode = userRow.order_code;
 
-            const targetAlbum = albums.find(a => a.id === targetAlbumId);
-            if (!targetAlbum) return;
+                const targetAlbum = albums.find(a => a.id === targetAlbumId);
+                if (!targetAlbum) return;
 
-            let rP = targetAlbum.price.toLowerCase().trim();
-            let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
+                let rP = targetAlbum.price.toLowerCase().trim();
+                let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
 
-            const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
+                const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
 
-            if (newTotalBalance >= albumPrice) {
-                const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
+                if (newTotalBalance >= albumPrice) {
+                    const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
 
-                await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
+                    await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
 
-                if (qrMessageId) {
-                    try {
-                        await bot.telegram.deleteMessage(customerChatId, qrMessageId);
-                    } catch (err) {
+                    if (qrMessageId) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, qrMessageId);
+                        } catch (err) {
+                        }
                     }
-                }
 
-                for (const warnMsgId of warnMessageIds) {
-                    try {
-                        await bot.telegram.deleteMessage(customerChatId, warnMsgId);
-                    } catch (err) {
+                    for (const warnMsgId of warnMessageIds) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, warnMsgId);
+                        } catch (err) {
+                        }
                     }
-                }
 
-                const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
-                const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
-                const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
-                const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
+                    const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
+                    const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
+                    const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
+                    const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-                try {
-                    const successMsg = await bot.telegram.sendMessage(customerChatId,
-                        `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
-                        `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
-                        `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
-                        `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
-                        `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
-                        `🎁 <b>Link Album của anh đây ạ:</b>\n` +
-                        `💿 Album: <b>${targetAlbum.title}</b>\n` +
-                        `🔗 Link 1: ${link1Text}\n` +
-                        `🔗 Link 2: ${link2Text}\n\n` +
-                        `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-                        { parse_mode: 'HTML' }
-                    );
-                    await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
-                } catch (err: any) {
-                    console.error(err);
-                }
+                    try {
+                        const successMsg = await bot.telegram.sendMessage(customerChatId,
+                            `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
+                            `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
+                            `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
+                            `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
+                            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                            `💿 Album: <b>${targetAlbum.title}</b>\n` +
+                            `🔗 Link 1: ${link1Text}\n` +
+                            `🔗 Link 2: ${link2Text}\n\n` +
+                            `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
+                            { parse_mode: 'HTML' }
+                        );
+                        await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
+                    } catch (err: any) {
+                        console.error(err);
+                    }
 
-                await sendPurchaseReportToAdmin(customerChatId);
-                await clearPendingOrder(customerChatId);
+                    await sendPurchaseReportToAdmin(customerChatId);
+                    await clearPendingOrder(customerChatId);
 
-            } else {
-                const shortAmount = albumPrice - newTotalBalance;
+                } else {
+                    const shortAmount = albumPrice - newTotalBalance;
 
-                let sentWarnMsg = null;
-                try {
-                    sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
-                        `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN* \n\n` +
-                        `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
-                        `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
-                        `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
-                        `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
-                        { parse_mode: 'Markdown' }
-                    );
-                } catch (err: any) {
-                    console.error(err);
-                }
+                    let sentWarnMsg = null;
+                    try {
+                        sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
+                            `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN* \n\n` +
+                            `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
+                            `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
+                            `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
+                            `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch (err: any) {
+                        console.error(err);
+                    }
 
-                if (sentWarnMsg) {
-                    await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
-                    await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
+                    if (sentWarnMsg) {
+                        await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
+                        await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
+                    }
                 }
             }
+        } catch (error) {
+            console.error(error);
         }
-    } catch (error) {
-        console.error(error);
+    } else {
+        console.log("Đã đạt ngưỡng 100 giao dịch trong tháng, không xử lý thêm.\n");
+        console.log('\n=== 📥 NHẬN WEBHOOK TỪ BANK / MACRODROID ===');
+        console.log(req.body);
+        console.log('===============================================\n');
+
+        try {
+            const content = (req.body.content || req.body.description || req.body.code || '').toString();
+            let actualPaid = Number(req.body.transferAmount || req.body.amount || 0);
+
+            if (!content) return;
+
+            // Tự động bóc tách số tiền từ nội dung tin nhắn nếu webhook gửi từ MacroDroid
+            if (!actualPaid || isNaN(actualPaid)) {
+                // Bắt buộc phải có dấu + phía trước (VD: + 100,000) để tránh bắt nhầm số tài khoản
+                const matchedAmount = content.replace(/[,.]/g, '').match(/\+\s*(\d{4,12})/);
+                if (matchedAmount && matchedAmount[1]) {
+                    actualPaid = Number(matchedAmount[1]);
+                }
+            }
+
+            console.log(`[Webhook Check] Số tiền thực nhận: ${actualPaid}đ | Nội dung GD: ${content}`);
+
+            const result = await pool.query(
+                `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
+             FROM users_data 
+             WHERE order_code IS NOT NULL AND $1 ILIKE '%' || order_code || '%'`,
+                [content]
+            );
+
+            if (result.rows.length > 0) {
+                const userRow = result.rows[0];
+                const customerChatId = Number(userRow.user_id);
+                const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
+                const targetAlbumId = Number(userRow.pending_album_id);
+                const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
+                const orderCode = userRow.order_code;
+
+                const targetAlbum = albums.find(a => a.id === targetAlbumId);
+                if (!targetAlbum) return;
+
+                let rP = targetAlbum.price.toLowerCase().trim();
+                let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
+
+                // Đã xóa DANGEROUS FALLBACK (actualPaid = albumPrice) tại đây. 
+                // Bảo vệ hệ thống khỏi việc tự động cho free nếu regex không bắt được tiền.
+
+                console.log(`[Webhook Match] Mã HĐ: ${orderCode} | Cần thanh toán: ${albumPrice}đ | Nạp vào: ${actualPaid}đ`);
+
+                const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
+                if (newTotalBalance >= albumPrice) {
+                    const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
+
+                    await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
+
+                    if (qrMessageId) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, qrMessageId);
+                        } catch (err) {
+                        }
+                    }
+
+                    for (const warnMsgId of warnMessageIds) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, warnMsgId);
+                        } catch (err) {
+                        }
+                    }
+
+                    const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
+                    const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
+                    const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
+                    const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
+
+                    try {
+                        const successMsg = await bot.telegram.sendMessage(customerChatId,
+                            `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
+                            `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
+                            `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
+                            `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
+                            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                            `💿 Album: <b>${targetAlbum.title}</b>\n` +
+                            `🔗 Link 1: ${link1Text}\n` +
+                            `🔗 Link 2: ${link2Text}\n\n` +
+                            `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
+                            { parse_mode: 'HTML' }
+                        );
+                        await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
+                    } catch (err: any) {
+                        console.error("Lỗi gửi link album webhook:", err);
+                    }
+
+                    await sendPurchaseReportToAdmin(customerChatId);
+                    await clearPendingOrder(customerChatId);
+
+                } else {
+                    const shortAmount = albumPrice - newTotalBalance;
+
+                    let sentWarnMsg = null;
+                    try {
+                        sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
+                            `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN Hoặc SAI SỐ LƯỢNG* \n\n` +
+                            `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
+                            `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
+                            `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
+                            `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch (err: any) {
+                        console.error("Lỗi gửi cảnh báo thiếu tiền webhook:", err);
+                    }
+
+                    if (sentWarnMsg) {
+                        await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
+                        await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Lỗi khi xử lý webhook ngân hàng:", error);
+        }
     }
 });
 
@@ -1380,7 +1505,7 @@ bot.command('adduserbuy', async (ctx) => {
         if (successAlbums.length > 0) {
             replyMsg += `🎉 <b>Thêm THÀNH CÔNG:</b>\n- ` + successAlbums.join('\n- ') + `\n\n`;
         }
-        
+
         if (failedAlbums.length > 0) {
             replyMsg += `⚠️ <b>Thêm THẤT BẠI:</b>\n- ` + failedAlbums.join('\n- ') + `\n`;
         }
