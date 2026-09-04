@@ -6,7 +6,7 @@ import express from 'express';
 
 dotenv.config();
 
-const bot = new Telegraf<NyanContext>(process.env.BOT_TOKEN_TEST as string);
+const bot = new Telegraf<NyanContext>(process.env.BOT_TOKEN as string);
 const GROUP_NOTI_PAYMENT = process.env.GROUP_NOTI_PAYMENT ? Number(process.env.GROUP_NOTI_PAYMENT) : null;
 const adminAddingAlbum = new Set<number>();
 const adminEditingAlbum = new Set<number>();
