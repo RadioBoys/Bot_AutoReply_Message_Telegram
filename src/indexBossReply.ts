@@ -5,45 +5,44 @@ import input from 'input';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import { Pool } from 'pg';
 
 dotenv.config();
 
-// ------------------------------------------------------
-// Auto Reply Telegram 
-// ------------------------------------------------------
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } 
+});
+
+pool.on('error', (err) => {});
+
+const COMMAND_GROUP_ID = '-1004446324011';
+
 const apiId = parseInt(process.env.API_ID as string);
 const apiHash = process.env.API_HASH as string;
 
 const savedSession = process.env.SESSION_STRING || '';
 const stringSession = new StringSession(savedSession);
 
-// Đường dẫn tới file JSON lưu trạng thái người dùng
 const USER_CHAT_FILE = path.join(process.cwd(), 'userChat.json');
 
-// --- HÀM XỬ LÝ DATABASE JSON ---
 function loadUserStates(): Record<string, any> {
     try {
         if (fs.existsSync(USER_CHAT_FILE)) {
             const rawData = fs.readFileSync(USER_CHAT_FILE, 'utf8');
             return JSON.parse(rawData);
         }
-    } catch (error) {
-        console.error('⚠️ [Error] Lỗi khi đọc file userChat.json:', error);
-    }
-    return {}; // Trả về object rỗng nếu file chưa tồn tại hoặc lỗi
+    } catch (error) {}
+    return {};
 }
 
 function saveUserStates(data: Record<string, any>) {
     try {
         fs.writeFileSync(USER_CHAT_FILE, JSON.stringify(data, null, 4), 'utf8');
-    } catch (error) {
-        console.error('⚠️ [Error] Lỗi khi ghi file userChat.json:', error);
-    }
+    } catch (error) {}
 }
 
-// Khởi tạo state từ file (chỉ chạy 1 lần khi start bot)
 const userStates = loadUserStates();
-// Biến này vẫn lưu trên RAM vì tính chất tạm thời, không cần lưu JSON
 const lastMessageTime: Record<string, number> = {};
 
 function saveSession(newSessionString: string) {
@@ -61,7 +60,6 @@ function saveSession(newSessionString: string) {
     }
 
     fs.writeFileSync(envFilePath, envContent.trim() + '\n');
-    console.log('✅ Đã lưu Session String mới vào file .env!');
 };
 
 async function sendMainMenu(client: TelegramClient, senderId: string) {
@@ -72,41 +70,32 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
                  `3️⃣ Nhắn tin riêng trực tiếp với tôi (Nhắn số 3 hoặc 'chat riêng')`;
                  
     try {
-        // 1. Lấy 15 tin nhắn gần nhất trong mục Saved Messages ('me')
         const savedMsgs = await client.getMessages('me', { limit: 15 }); 
-        
-        // 2. Tìm tin nhắn đầu tiên có chứa media (chính là cái video ông vừa gửi)
         const videoMsg = savedMsgs.find(msg => msg.media);
         const videoMedia = videoMsg?.media;
 
-        // 3. Gửi menu kèm video
         if (videoMedia) {
             await client.sendMessage(senderId, { 
                 message: menu,
-                file: videoMedia // Lấy đúng object media gán vào đây
+                file: videoMedia 
             });
         } else {
-            // Đề phòng trường hợp ông xóa mất video trong Saved Messages
             await client.sendMessage(senderId, { message: menu });
         }
-    } catch (err) {
-        console.error(`[Error] Không thể gửi Main Menu cho ${senderId}:`, err);
-    }
+    } catch (err) {}
 }
 
 (async () => {
-    console.log("Connecting to Telegram...");
     const client = new TelegramClient(stringSession, apiId, apiHash, {
         connectionRetries: 5,
     });
     
     await client.start({
-        phoneNumber: async () => await input.text('Nhập số điện thoại:'),
-        password: async () => await input.text('Nhập mật khẩu 2 lớp (nếu có):'),
-        phoneCode: async () => await input.text('Nhập code Telegram gửi về:'),
+        phoneNumber: async () => await input.text('Phone:'),
+        password: async () => await input.text('Password:'),
+        phoneCode: async () => await input.text('Code:'),
         onError: (err) => console.log(err),
     });
-    console.log('✅ Đăng nhập thành công!');
     
     const currentSessionString = String(client.session.save());
 
@@ -117,32 +106,146 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
     client.addEventHandler(async (event) => {
         const message = event.message;
         
-        if (message.out || !message.isPrivate) return;
+        const chatId = message.chatId?.toString() || '';
+        const isCommandGroup = chatId === COMMAND_GROUP_ID;
+
+        if (message.out && !isCommandGroup) return;
+        if (!message.isPrivate && !isCommandGroup) return;
 
         const sender = await message.getSender() as unknown as Api.User;
-        if (sender && sender.bot) {
-            return; // Bỏ qua bot
-        }
+        if (sender && sender.bot) return;
         
         const senderId = sender?.id.toString() || '';
-        if (!senderId) return;
+        if (!senderId && message.out) {
+        } else if (!senderId) {
+             return;
+        }
 
-        // --- CƠ CHẾ CHỐNG SPAM (RATE LIMITING) ---
+        const userText = (message.message || '').trim();
+        const textLower = userText.toLowerCase();
+
+        if (isCommandGroup) {
+            if (userText.startsWith('/list')) {
+                try {
+                    const res = await pool.query('SELECT id, name, link FROM url_telegram WHERE is_active = true ORDER BY id ASC');
+                    let msg = '📋 Danh sách link active:\n';
+                    res.rows.forEach(r => msg += `- ID: ${r.id} | ${r.name} | ${r.link}\n`);
+                    await client.sendMessage(chatId, { message: msg || 'Trống' });
+                } catch (err) {}
+                return;
+            }
+
+            if (userText.startsWith('/searchlink')) {
+                const keyword = userText.replace('/searchlink', '').trim();
+                try {
+                    const res = await pool.query('SELECT id, name, link, is_active FROM url_telegram WHERE name ILIKE $1', [`%${keyword}%`]);
+                    let msg = `🔍 Kết quả tìm kiếm cho '${keyword}':\n`;
+                    res.rows.forEach(r => msg += `- ID: ${r.id} | ${r.name} | ${r.link} | Active: ${r.is_active}\n`);
+                    await client.sendMessage(chatId, { message: msg || 'Không tìm thấy' });
+                } catch (err) {}
+                return;
+            }
+
+            if (userText.startsWith('/editlink')) {
+                const parts = userText.replace('/editlink', '').split('|').map(s => s.trim());
+                if (parts.length >= 4) {
+                    const id = parseInt(parts[0] ?? '', 10);
+                    const newName = parts[1];
+                    const newLink = parts[2];
+                    const isActive = parts[3]?.toLowerCase() === 'true';
+                    try {
+                        await pool.query('UPDATE url_telegram SET name = $1, link = $2, is_active = $3, update_time = NOW() WHERE id = $4', [newName, newLink, isActive, id]);
+                        await client.sendMessage(chatId, { message: `✅ Cập nhật ID ${id} thành công!` });
+                    } catch(err) {}
+                } else {
+                    await client.sendMessage(chatId, { message: `❌ Cú pháp: /editlink id | name | link | true/false` });
+                }
+                return;
+            }
+
+            const linkRegex = /(?:https?:\/\/)?t\.me\/(joinchat\/|\+)?([\w-]+)/i;
+            const match = userText.match(linkRegex);
+
+            if (match) {
+                const fullLink = match[0].startsWith('http') ? match[0] : `https://${match[0]}`;
+                const isPrivateLink = !!match[1];
+                const hashOrUsername = match[2]!;
+                
+                let groupName = "Unknown";
+                let groupType = "Unknown";
+                let isActive = true;
+
+                try {
+                    if (isPrivateLink) {
+                        const inviteInfo = await client.invoke(new Api.messages.CheckChatInvite({ hash: hashOrUsername }));
+                        
+                        if (inviteInfo.className === 'ChatInviteAlready') {
+                            const chat = inviteInfo.chat as any;
+                            groupName = chat.title;
+                            if (chat.className === 'Channel') {
+                                groupType = chat.broadcast ? 'Channel Private' : 'Group Private';
+                            } else {
+                                groupType = 'Group Private';
+                            }
+                        } else if (inviteInfo.className === 'ChatInvite') {
+                            groupName = inviteInfo.title;
+                            groupType = (inviteInfo as any).broadcast ? 'Channel Private' : 'Group Private';
+                        }
+                    } else {
+                        const entity = await client.getEntity(hashOrUsername) as any;
+                        groupName = entity.title || entity.firstName || "Unknown";
+                        
+                        if (entity.className === 'Channel') {
+                            groupType = entity.broadcast ? 'Channel Public' : 'Group Public';
+                        } else if (entity.className === 'Chat') {
+                            groupType = 'Group Public';
+                        }
+                    }
+
+                    const query = `
+                        INSERT INTO url_telegram (name, link, type, update_time, is_active)
+                        VALUES ($1, $2, $3, NOW(), $4)
+                        ON CONFLICT (link) DO UPDATE 
+                        SET update_time = NOW(), name = EXCLUDED.name, type = EXCLUDED.type, is_active = EXCLUDED.is_active;
+                    `;
+                    await pool.query(query, [groupName, fullLink, groupType, isActive]);
+
+                    await client.sendMessage(chatId, { 
+                        message: `✅ LƯU THÀNH CÔNG!\n- Tên: ${groupName}\n- Type: ${groupType}\n- Link: ${fullLink}` 
+                    });
+                    
+                    await client.deleteMessages(chatId, [message.id], { revoke: true });
+
+                } catch (err: any) {
+                    await client.sendMessage(chatId, { 
+                        message: `❌ LỖI LINK: ${err.message}` 
+                    });
+                    
+                    if (err.message.includes("INVITE_HASH_EXPIRED") || err.message.includes("USERNAME_INVALID")) {
+                        await pool.query(
+                            `INSERT INTO url_telegram (name, link, type, update_time, is_active)
+                             VALUES ('N/A', $1, 'Unknown', NOW(), false)
+                             ON CONFLICT (link) DO UPDATE SET update_time = NOW(), is_active = false;`,
+                            [fullLink]
+                        );
+                    }
+                    
+                    await client.deleteMessages(chatId, [message.id], { revoke: true });
+                }
+            }
+            return; 
+        }
+
         const now = Date.now();
         const userLastTime = lastMessageTime[senderId] || 0;
         if (now - userLastTime < 3000) { 
-            console.log(`[Spam Guard] Chặn tin nhắn spam từ ${senderId}`);
             return;
         }
         lastMessageTime[senderId] = now;
 
-        // Lấy thông tin user để lưu vào JSON
         const username = sender.username || '';
         const displayName = `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || 'Người Lạ';
-        const userText = (message.message || '').trim();
-        const textLower = userText.toLowerCase();
 
-        // Khởi tạo profile nếu user chưa có trong database
         if (!userStates[senderId]) {
             userStates[senderId] = {
                 id: senderId,
@@ -150,26 +253,20 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
                 displayName: displayName,
                 mode: 'AUTO'
             };
-            saveUserStates(userStates); // Lưu ngay
+            saveUserStates(userStates); 
         }
 
-        // ========================================================
-        // CASE 1: DIRECT CHAT MODE
-        // ========================================================
         if (userStates[senderId].mode === 'CHAT_DIRECT') {
             if (textLower === 'bot' || textLower === '0') {
                 userStates[senderId].mode = 'AUTO';
-                saveUserStates(userStates); // Cập nhật lại file JSON
+                saveUserStates(userStates); 
                 
                 await sendMainMenu(client, senderId);
                 return;
             }
-            return; // Đang ở CHAT_DIRECT, bot im lặng
+            return;
         }
 
-        // ========================================================
-        // CASE 2: AUTOMATIC ASSISTANT MODE (AUTO)
-        // ========================================================
         try {
             if (userText === '1' || /album|ảnh|vợ|dâm|alb|mua|xem|clip/i.test(textLower)) {
                 await client.sendMessage(senderId, { 
@@ -186,7 +283,6 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
             } 
             
             if (userText === '3' || /chat riêng|nhắn tin|gặp trực tiếp|rep đi/i.test(textLower)) {
-                // Đổi trạng thái sang CHAT_DIRECT và lưu vào file
                 userStates[senderId].mode = 'CHAT_DIRECT';
                 saveUserStates(userStates);
                 
@@ -197,24 +293,13 @@ async function sendMainMenu(client: TelegramClient, senderId: string) {
                 return;
             }
 
-            // Fallback gửi menu chính
             await sendMainMenu(client, senderId);
 
-        } catch (err) {
-            console.error(`[Error] Lỗi khi xử lý tin nhắn của ${senderId}:`, err);
-        }
+        } catch (err) {}
 
     }, new NewMessage({}));
 
-    console.log('🤖 Bot is listening...');
 })();
 
-// Bắt các lỗi không được xử lý (Uncaught Exceptions)
-process.on('uncaughtException', (err) => {
-    console.error('🔥 [Fatal Error] Uncaught Exception:', err);
-});
-
-// Bắt các lỗi Promise bị từ chối (Unhandled Rejections)
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('⚠️ [Warning] Unhandled Rejection at:', promise, 'reason:', reason);
-});
+process.on('uncaughtException', (err) => {});
+process.on('unhandledRejection', (reason, promise) => {});
