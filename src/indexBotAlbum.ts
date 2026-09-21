@@ -23,9 +23,9 @@ async function addNewAlbum(
 ): Promise<boolean> {
     try {
         const query = `
-            INSERT INTO albums (id, title, link_album, path, fileid, type, tags, price, description)
-            VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM albums), $1, $2, $3, $4, $5, $6, $7, $8)
-        `;
+                INSERT INTO albums (id, title, link_album, path, fileid, type, tags, price, description)
+                VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM albums), $1, $2, $3, $4, $5, $6, $7, $8)
+            `;
 
         await pool.query(query, [
             title,
@@ -97,11 +97,11 @@ pool.connect()
     .catch((err) => console.error("Failed to connect to PostgreSQL database:", err));
 
 pool.query(`
-    SELECT setval(
-        'users_purchased_id_seq', 
-        COALESCE((SELECT MAX(id) FROM users_purchased), 1)
-    );
-`).then(() => {
+        SELECT setval(
+            'users_purchased_id_seq', 
+            COALESCE((SELECT MAX(id) FROM users_purchased), 1)
+        );
+    `).then(() => {
     console.log('🔄 Đã tự động đồng bộ bộ đếm ID cho bảng users_purchased!');
 }).catch(err => {
     console.error('❌ Lỗi đồng bộ sequence:', err);
@@ -124,11 +124,11 @@ async function getUserBalance(userId: number): Promise<number> {
 async function updateUserBalance(userId: number, amount: number): Promise<number> {
     try {
         const query = `
-            UPDATE users_data
-            SET balance = COALESCE(balance, 0) + $1
-            WHERE user_id = $2
-            RETURNING balance;
-        `;
+                UPDATE users_data
+                SET balance = COALESCE(balance, 0) + $1
+                WHERE user_id = $2
+                RETURNING balance;
+            `;
         const result = await pool.query(query, [amount, userId]);
         if (result.rows.length > 0) {
             return Number(result.rows[0].balance);
@@ -143,10 +143,10 @@ async function updateUserBalance(userId: number, amount: number): Promise<number
 async function setPendingOrder(userId: number, orderCode: string, albumId: number, qrMessageId: number) {
     try {
         const query = `
-            UPDATE users_data 
-            SET order_code = $1, pending_album_id = $2, qr_message_id = $3, warn_message_ids = '{}'
-            WHERE user_id = $4;
-        `;
+                UPDATE users_data 
+                SET order_code = $1, pending_album_id = $2, qr_message_id = $3, warn_message_ids = '{}'
+                WHERE user_id = $4;
+            `;
         await pool.query(query, [orderCode, albumId, qrMessageId, userId]);
     } catch (error) {
         console.error(error);
@@ -156,10 +156,10 @@ async function setPendingOrder(userId: number, orderCode: string, albumId: numbe
 async function clearPendingOrder(userId: number) {
     try {
         const query = `
-            UPDATE users_data 
-            SET order_code = NULL, pending_album_id = NULL, qr_message_id = NULL, warn_message_ids = '{}'
-            WHERE user_id = $1;
-        `;
+                UPDATE users_data 
+                SET order_code = NULL, pending_album_id = NULL, qr_message_id = NULL, warn_message_ids = '{}'
+                WHERE user_id = $1;
+            `;
         await pool.query(query, [userId]);
     } catch (error) {
         console.error(error);
@@ -169,12 +169,12 @@ async function clearPendingOrder(userId: number) {
 async function getMonthlyTransactionCount(): Promise<number> {
     try {
         const query = `
-            SELECT COUNT(*) 
-            FROM users_purchased 
-            WHERE EXTRACT(MONTH FROM purchased_at) = EXTRACT(MONTH FROM CURRENT_DATE)
-              AND EXTRACT(YEAR FROM purchased_at) = EXTRACT(YEAR FROM CURRENT_DATE)
-              AND payment_method = 'sepay'
-        `;
+                SELECT COUNT(*) 
+                FROM users_purchased 
+                WHERE EXTRACT(MONTH FROM purchased_at) = EXTRACT(MONTH FROM CURRENT_DATE)
+                AND EXTRACT(YEAR FROM purchased_at) = EXTRACT(YEAR FROM CURRENT_DATE)
+                AND payment_method = 'sepay'
+            `;
         const res = await pool.query(query);
         return parseInt(res.rows[0].count) || 0;
     } catch (error) {
@@ -186,10 +186,10 @@ async function getMonthlyTransactionCount(): Promise<number> {
 async function addWarnMessageId(userId: number, warnMsgId: number) {
     try {
         const query = `
-            UPDATE users_data 
-            SET warn_message_ids = array_append(COALESCE(warn_message_ids, '{}'), $1)
-            WHERE user_id = $2;
-        `;
+                UPDATE users_data 
+                SET warn_message_ids = array_append(COALESCE(warn_message_ids, '{}'), $1)
+                WHERE user_id = $2;
+            `;
         await pool.query(query, [warnMsgId, userId]);
     } catch (error) {
         console.error(error);
@@ -199,10 +199,10 @@ async function addWarnMessageId(userId: number, warnMsgId: number) {
 async function addSystemMessageId(userId: number, messageId: number) {
     try {
         const query = `
-            UPDATE users_data 
-            SET system_message_ids = array_append(COALESCE(system_message_ids, '{}'), $1)
-            WHERE user_id = $2;
-        `;
+                UPDATE users_data 
+                SET system_message_ids = array_append(COALESCE(system_message_ids, '{}'), $1)
+                WHERE user_id = $2;
+            `;
         await pool.query(query, [messageId, userId]);
     } catch (error) {
         console.error(error);
@@ -212,10 +212,10 @@ async function addSystemMessageId(userId: number, messageId: number) {
 async function addAlbumLinkMessageId(userId: number, messageId: number) {
     try {
         const query = `
-            UPDATE users_data 
-            SET album_link_message_ids = array_append(COALESCE(album_link_message_ids, '{}'), $1)
-            WHERE user_id = $2;
-        `;
+                UPDATE users_data 
+                SET album_link_message_ids = array_append(COALESCE(album_link_message_ids, '{}'), $1)
+                WHERE user_id = $2;
+            `;
         await pool.query(query, [messageId, userId]);
     } catch (error) {
         console.error(error);
@@ -272,36 +272,33 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
         } catch (e) {
         }
 
-        let purchasedAlbums: { id: any, title: string }[] = [];
+        let latestAlbum: { id: any, title: string } | null = null;
         try {
             const query = `
                 SELECT up.album_id as id, a.title 
                 FROM users_purchased up
                 LEFT JOIN albums a ON up.album_id::text = a.id::text
                 WHERE up.user_id::text = $1::text 
-                ORDER BY up.purchased_at ASC
+                ORDER BY up.purchased_at DESC, up.id DESC
+                LIMIT 1
             `;
             const res = await pool.query(query, [customerId]);
-            purchasedAlbums = res.rows;
+            if (res.rows.length > 0) {
+                latestAlbum = res.rows[0];
+            }
         } catch (e) {
             console.error("Lỗi khi truy vấn album:", e);
         }
 
-        let albumListText = "";
-        if (purchasedAlbums.length === 0) {
-            albumListText = "Chưa sở hữu album nào.";
-        } else {
-            albumListText = purchasedAlbums.map(album => {
-                const albumTitle = album.title || "Album không rõ";
-                return `🎥 ${albumTitle} (ID: ${album.id})`;
-            }).join("\n");
-        }
+        let albumText = latestAlbum 
+            ? `🎥 ${latestAlbum.title || "Album không rõ"} (ID: ${latestAlbum.id})`
+            : "Chưa xác định album.";
 
         const message =
             `👤 Khách hàng: ${fullName}\n` +
             `🏷️ Username: ${username}\n` +
             `🆔 ID: ${customerId}\n` +
-            `🎥 Album mua: \n${albumListText}`;
+            `🎥 Album mua: \n${albumText}`;
 
         await bot.telegram.sendMessage(GROUP_NOTI_PAYMENT, message);
 
@@ -313,10 +310,10 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
 async function addUserToDatabase(userId: number, fullName: string, username: string) {
     try {
         const query = `
-        INSERT INTO users_data (user_id, full_name, username, balance)
-        VALUES ($1, $2, $3, 0)
-        ON CONFLICT (user_id) 
-        DO UPDATE SET full_name = EXCLUDED.full_name, username = EXCLUDED.username;`;
+            INSERT INTO users_data (user_id, full_name, username, balance)
+            VALUES ($1, $2, $3, 0)
+            ON CONFLICT (user_id) 
+            DO UPDATE SET full_name = EXCLUDED.full_name, username = EXCLUDED.username;`;
 
         await pool.query(query, [userId, fullName, username]);
     } catch (error) {
@@ -327,8 +324,8 @@ async function addUserToDatabase(userId: number, fullName: string, username: str
 async function addUserPurchased(userId: number, albumId: number, price: number) {
     try {
         const query = `
-        INSERT INTO users_purchased (user_id, album_id, price, purchased_at)
-        VALUES ($1, $2, $3, NOW());`;
+            INSERT INTO users_purchased (user_id, album_id, price, purchased_at)
+            VALUES ($1, $2, $3, NOW());`;
 
         await pool.query(query, [userId, albumId, price]);
     } catch (error) {
@@ -419,19 +416,19 @@ bot.action('view_top_fans', async (ctx) => {
         const yearOfLastMonth = lastMonthDate.getFullYear();
 
         const topQuery = `
-            SELECT 
-                u.user_id,
-                u.full_name,
-                u.username,
-                SUM(p.price) AS total_spent
-            FROM users_data u
-            JOIN users_purchased p ON u.user_id = p.user_id
-            WHERE EXTRACT(MONTH FROM p.purchased_at) = $1 
-              AND EXTRACT(YEAR FROM p.purchased_at) = $2
-            GROUP BY u.user_id, u.full_name, u.username
-            ORDER BY total_spent DESC
-            LIMIT 3;
-        `;
+                SELECT 
+                    u.user_id,
+                    u.full_name,
+                    u.username,
+                    SUM(p.price) AS total_spent
+                FROM users_data u
+                JOIN users_purchased p ON u.user_id = p.user_id
+                WHERE EXTRACT(MONTH FROM p.purchased_at) = $1 
+                AND EXTRACT(YEAR FROM p.purchased_at) = $2
+                GROUP BY u.user_id, u.full_name, u.username
+                ORDER BY total_spent DESC
+                LIMIT 3;
+            `;
 
         const topRes = await pool.query(topQuery, [lastMonth, yearOfLastMonth]);
         const topUsers = topRes.rows;
@@ -499,7 +496,7 @@ bot.action('view_vip_clip', async (ctx) => {
     try {
         // 1. Kiểm tra xem có event nào đang BẬT hay không
         const eventRes = await pool.query('SELECT * FROM events WHERE is_active = true ORDER BY id DESC LIMIT 1');
-        
+
         if (eventRes.rows.length === 0) {
             const msg = await ctx.reply('Hiện tại pé Nyan chưa có event nào cả ❤️', {
                 reply_markup: {
@@ -730,9 +727,9 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
 
     if (filteredAlbums.length === 0) {
         const msg = await ctx.reply(
-            selectedTag === 'newAlbum' 
-            ? `Hiện tại pé chưa có album nào cả a iu ơi ~` 
-            : `Album thể loại ${selectedTag} em chưa có rùi a iu ơi ~`
+            selectedTag === 'newAlbum'
+                ? `Hiện tại pé chưa có album nào cả a iu ơi ~`
+                : `Album thể loại ${selectedTag} em chưa có rùi a iu ơi ~`
         );
         await addSystemMessageId(chatId, msg.message_id);
         return;
@@ -938,18 +935,18 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
 
     // Giai đoạn 3: > 96 giao dịch -> Quay lại ACB (dùng MacroDroid)
     if (currentTxCount >= LIMIT_SEPAY_2) {
-        bankName = "ACB"; 
+        bankName = "ACB";
         accountNumber = "8288977";
         accountHolder = "NGUYEN NGOC THAI";
         bankDisplayName = "ACB";
-    } 
+    }
     // Giai đoạn 2: Từ 48 - 95 đơn -> Dùng SePay 2 (MBBank)
     else if (currentTxCount >= LIMIT_SEPAY_1) {
-        bankName = "MB"; 
+        bankName = "MB";
         accountNumber = "0327091202";
         accountHolder = "NGUYEN NGOC THAI";
         bankDisplayName = "MBBank";
-    } 
+    }
     // Giai đoạn 1: Dưới 48 đơn -> Dùng SePay 1 (ACB)
     else {
         bankName = "ACB";
@@ -961,17 +958,17 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
     const qrUrl = `https://vietqr.app/img?bank=${bankName}&acc=${accountNumber}&template=compact&amount=${finalPayAmount}&des=${encodeURIComponent(orderCode)}&showinfo=true&holder=${encodeURIComponent(accountHolder)}`;
 
     const messageText = `🔥 *ĐẶT MUA ALBUM: ${targetAlbum.title}*
-💰 *Giá gốc:* ${targetAlbum.price}
-💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
-💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
---------------------------------------
-💳 *Ngân hàng:* ${bankName === 'MB' ? 'MBBank' : 'ACB'}
-👤 *Số tài khoản:* \`${accountNumber}\`
-👤 *Chủ tài khoản:* ${accountHolder}
-📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
---------------------------------------
-Stk của quản lý em nên anh không cần lo nè ❤️
-⚠️ *Lưu ý*: Ghi đúng nội dung chuyển khoản nha anh ~`;
+    💰 *Giá gốc:* ${targetAlbum.price}
+    💳 *Số dư ví hiện có:* ${currentBalance.toLocaleString()}đ
+    💎 *Số tiền cần chuyển khoản:* *${finalPayAmount.toLocaleString()}đ*
+    --------------------------------------
+    💳 *Ngân hàng:* ${bankName === 'MB' ? 'MBBank' : 'ACB'}
+    👤 *Số tài khoản:* \`${accountNumber}\`
+    👤 *Chủ tài khoản:* ${accountHolder}
+    📝 *Nội dung CK đúng 100%:* \`${orderCode}\`
+    --------------------------------------
+    Stk của quản lý em nên anh không cần lo nè ❤️
+    ⚠️ *Lưu ý*: Ghi đúng nội dung chuyển khoản nha anh ~`;
 
     try {
         await ctx.replyWithChatAction('upload_photo').catch(() => { });
@@ -998,128 +995,233 @@ const app = express();
 app.use(express.json());
 
 app.post('/webhook/bank', async (req, res) => {
-
-    console.log('\n=== 📥 NHẬN WEBHOOK TỪ BANK / MACRODROID ===');
-    console.log(req.body);
-    console.log('===============================================\n');
-
     res.status(200).json({ success: true });
 
-    try {
-        const content = (req.body.content || req.body.description || req.body.code || '').toString();
-        let actualPaid = Number(req.body.transferAmount || req.body.amount || 0);
+    const currentTxCount = await getMonthlyTransactionCount();
+    if (currentTxCount <= 100) {
+        try {
+            const { content, transferAmount } = req.body;
+            const actualPaid = Number(transferAmount);
 
-        if (!content) return;
+            if (!content) return;
 
-        // Tự động bóc tách số tiền từ nội dung tin nhắn nếu webhook gửi từ MacroDroid
-        if (!actualPaid || isNaN(actualPaid)) {
-            // Bắt buộc phải có dấu + phía trước (VD: + 100,000) để tránh bắt nhầm số tài khoản
-            const matchedAmount = content.replace(/[,.]/g, '').match(/\+\s*(\d{4,12})/);
-            if (matchedAmount && matchedAmount[1]) {
-                actualPaid = Number(matchedAmount[1]);
-            }
-        }
-        
-        console.log(`[Webhook Check] Số tiền thực nhận: ${actualPaid}đ | Nội dung GD: ${content}`);
+            const result = await pool.query(
+                `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
+                FROM users_data 
+                WHERE order_code IS NOT NULL AND $1 ILIKE '%' || order_code || '%'`,
+                [content]
+            );
 
-        const result = await pool.query(
-            `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
-             FROM users_data 
-             WHERE order_code IS NOT NULL AND $1 ILIKE '%' || order_code || '%'`,
-            [content]
-        );
+            if (result.rows.length > 0) {
+                const userRow = result.rows[0];
+                const customerChatId = Number(userRow.user_id);
+                const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
+                const targetAlbumId = Number(userRow.pending_album_id);
+                const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
+                const orderCode = userRow.order_code;
 
-        if (result.rows.length > 0) {
-            const userRow = result.rows[0];
-            const customerChatId = Number(userRow.user_id);
-            const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
-            const targetAlbumId = Number(userRow.pending_album_id);
-            const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
-            const orderCode = userRow.order_code;
+                const targetAlbum = albums.find(a => a.id === targetAlbumId);
+                if (!targetAlbum) return;
 
-            const targetAlbum = albums.find(a => a.id === targetAlbumId);
-            if (!targetAlbum) return;
+                let rP = targetAlbum.price.toLowerCase().trim();
+                let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
 
-            let rP = targetAlbum.price.toLowerCase().trim();
-            let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
+                const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
 
-            // Đã xóa DANGEROUS FALLBACK (actualPaid = albumPrice) tại đây. 
-            // Bảo vệ hệ thống khỏi việc tự động cho free nếu regex không bắt được tiền.
+                if (newTotalBalance >= albumPrice) {
+                    const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
 
-            console.log(`[Webhook Match] Mã HĐ: ${orderCode} | Cần thanh toán: ${albumPrice}đ | Nạp vào: ${actualPaid}đ`);
+                    await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
 
-            const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
-            if (newTotalBalance >= albumPrice) {
-                const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
+                    if (qrMessageId) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, qrMessageId);
+                        } catch (err) {
+                        }
+                    }
 
-                await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
+                    for (const warnMsgId of warnMessageIds) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, warnMsgId);
+                        } catch (err) {
+                        }
+                    }
 
-                if (qrMessageId) {
+                    const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
+                    const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
+                    const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
+                    const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
+
                     try {
-                        await bot.telegram.deleteMessage(customerChatId, qrMessageId);
-                    } catch (err) {
+                        const successMsg = await bot.telegram.sendMessage(customerChatId,
+                            `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
+                            `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
+                            `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
+                            `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
+                            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                            `💿 Album: <b>${targetAlbum.title}</b>\n` +
+                            `🔗 Link 1: ${link1Text}\n` +
+                            `🔗 Link 2: ${link2Text}\n\n` +
+                            `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
+                            { parse_mode: 'HTML' }
+                        );
+                        await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
+                    } catch (err: any) {
+                        console.error(err);
+                    }
+
+                    await sendPurchaseReportToAdmin(customerChatId);
+                    await clearPendingOrder(customerChatId);
+
+                } else {
+                    const shortAmount = albumPrice - newTotalBalance;
+
+                    let sentWarnMsg = null;
+                    try {
+                        sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
+                            `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN* \n\n` +
+                            `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
+                            `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
+                            `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
+                            `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch (err: any) {
+                        console.error(err);
+                    }
+
+                    if (sentWarnMsg) {
+                        await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
+                        await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
                     }
                 }
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    } else {
+        console.log("Đã đạt ngưỡng 100 giao dịch trong tháng, không xử lý thêm.\n");
+        console.log('\n=== 📥 NHẬN WEBHOOK TỪ BANK / MACRODROID ===');
+        console.log(req.body);
+        console.log('===============================================\n');
 
-                for (const warnMsgId of warnMessageIds) {
-                    try {
-                        await bot.telegram.deleteMessage(customerChatId, warnMsgId);
-                    } catch (err) {
-                    }
-                }
+        try {
+            const content = (req.body.content || req.body.description || req.body.code || '').toString();
+            let actualPaid = Number(req.body.transferAmount || req.body.amount || 0);
 
-                const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
-                const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
-                const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
-                const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
+            if (!content) return;
 
-                try {
-                    const successMsg = await bot.telegram.sendMessage(customerChatId,
-                        `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
-                        `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
-                        `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
-                        `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
-                        `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
-                        `🎁 <b>Link Album của anh đây ạ:</b>\n` +
-                        `💿 Album: <b>${targetAlbum.title}</b>\n` +
-                        `🔗 Link 1: ${link1Text}\n` +
-                        `🔗 Link 2: ${link2Text}\n\n` +
-                        `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
-                        { parse_mode: 'HTML' }
-                    );
-                    await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
-                } catch (err: any) {
-                    console.error("Lỗi gửi link album webhook:", err);
-                }
-
-                await sendPurchaseReportToAdmin(customerChatId);
-                await clearPendingOrder(customerChatId);
-
-            } else {
-                const shortAmount = albumPrice - newTotalBalance;
-
-                let sentWarnMsg = null;
-                try {
-                    sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
-                        `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN Hoặc SAI SỐ LƯỢNG* \n\n` +
-                        `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
-                        `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
-                        `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
-                        `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
-                        { parse_mode: 'Markdown' }
-                    );
-                } catch (err: any) {
-                    console.error("Lỗi gửi cảnh báo thiếu tiền webhook:", err);
-                }
-
-                if (sentWarnMsg) {
-                    await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
-                    await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
+            // Tự động bóc tách số tiền từ nội dung tin nhắn nếu webhook gửi từ MacroDroid
+            if (!actualPaid || isNaN(actualPaid)) {
+                // Bắt buộc phải có dấu + phía trước (VD: + 100,000) để tránh bắt nhầm số tài khoản
+                const matchedAmount = content.replace(/[,.]/g, '').match(/\+\s*(\d{4,12})/);
+                if (matchedAmount && matchedAmount[1]) {
+                    actualPaid = Number(matchedAmount[1]);
                 }
             }
+
+            console.log(`[Webhook Check] Số tiền thực nhận: ${actualPaid}đ | Nội dung GD: ${content}`);
+
+            const result = await pool.query(
+                `SELECT user_id, order_code, pending_album_id, qr_message_id, warn_message_ids 
+                FROM users_data 
+                WHERE order_code IS NOT NULL AND $1 ILIKE '%' || order_code || '%'`,
+                [content]
+            );
+
+            if (result.rows.length > 0) {
+                const userRow = result.rows[0];
+                const customerChatId = Number(userRow.user_id);
+                const qrMessageId = userRow.qr_message_id ? Number(userRow.qr_message_id) : null;
+                const targetAlbumId = Number(userRow.pending_album_id);
+                const warnMessageIds: number[] = userRow.warn_message_ids ? userRow.warn_message_ids.map(Number) : [];
+                const orderCode = userRow.order_code;
+
+                const targetAlbum = albums.find(a => a.id === targetAlbumId);
+                if (!targetAlbum) return;
+
+                let rP = targetAlbum.price.toLowerCase().trim();
+                let albumPrice = rP.includes('k') ? Number(rP.replace(/[^0-9]/g, '')) * 1000 : Number(rP.replace(/[^0-9]/g, ''));
+
+                // Đã xóa DANGEROUS FALLBACK (actualPaid = albumPrice) tại đây. 
+                // Bảo vệ hệ thống khỏi việc tự động cho free nếu regex không bắt được tiền.
+
+                console.log(`[Webhook Match] Mã HĐ: ${orderCode} | Cần thanh toán: ${albumPrice}đ | Nạp vào: ${actualPaid}đ`);
+
+                const newTotalBalance = await updateUserBalance(customerChatId, actualPaid);
+                if (newTotalBalance >= albumPrice) {
+                    const remainingBalance = await updateUserBalance(customerChatId, -albumPrice);
+
+                    await addUserPurchased(customerChatId, targetAlbumId, albumPrice);
+
+                    if (qrMessageId) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, qrMessageId);
+                        } catch (err) {
+                        }
+                    }
+
+                    for (const warnMsgId of warnMessageIds) {
+                        try {
+                            await bot.telegram.deleteMessage(customerChatId, warnMsgId);
+                        } catch (err) {
+                        }
+                    }
+
+                    const link1Raw = targetAlbum.linkAlbum?.[0]?.replace('Link 1:', '').trim();
+                    const link2Raw = targetAlbum.linkAlbum?.[1]?.replace('Link 2:', '').trim();
+                    const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
+                    const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
+
+                    try {
+                        const successMsg = await bot.telegram.sendMessage(customerChatId,
+                            `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
+                            `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
+                            `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
+                            `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
+                            `🎁 <b>Link Album của anh đây ạ:</b>\n` +
+                            `💿 Album: <b>${targetAlbum.title}</b>\n` +
+                            `🔗 Link 1: ${link1Text}\n` +
+                            `🔗 Link 2: ${link2Text}\n\n` +
+                            `Cảm ơn anh iu đã ủng hộ pé nhé! ~ ❤️❤️`,
+                            { parse_mode: 'HTML' }
+                        );
+                        await addAlbumLinkMessageId(customerChatId, successMsg.message_id);
+                    } catch (err: any) {
+                        console.error("Lỗi gửi link album webhook:", err);
+                    }
+
+                    await sendPurchaseReportToAdmin(customerChatId);
+                    await clearPendingOrder(customerChatId);
+
+                } else {
+                    const shortAmount = albumPrice - newTotalBalance;
+
+                    let sentWarnMsg = null;
+                    try {
+                        sentWarnMsg = await bot.telegram.sendMessage(customerChatId,
+                            `⚠️ *CẢNH BÁO: CHUYỂN KHOẢN THIẾU TIỀN Hoặc SAI SỐ LƯỢNG* \n\n` +
+                            `Hệ thống nhận được số tiền: *${actualPaid.toLocaleString()}đ* từ hóa đơn \`${orderCode}\`.\n` +
+                            `💳 Tổng tiền trong ví hiện tại của anh: *${newTotalBalance.toLocaleString()}đ*.\n` +
+                            `❌ Anh vẫn còn thiếu *${shortAmount.toLocaleString()}đ* nữa mới đủ mua album.\n\n` +
+                            `👉 *Biện pháp:* Anh vui lòng chuyển khoản thêm đúng số tiền thiếu (*${shortAmount.toLocaleString()}đ*) và nhớ **giữ nguyên nội dung chuyển khoản là:** \`${orderCode}\` để hệ thống tự động cộng dồn đủ tiền nhe anh!`,
+                            { parse_mode: 'Markdown' }
+                        );
+                    } catch (err: any) {
+                        console.error("Lỗi gửi cảnh báo thiếu tiền webhook:", err);
+                    }
+
+                    if (sentWarnMsg) {
+                        await addWarnMessageId(customerChatId, sentWarnMsg.message_id);
+                        await addSystemMessageId(customerChatId, sentWarnMsg.message_id);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error("Lỗi khi xử lý webhook ngân hàng:", error);
         }
-    } catch (error) {
-        console.error("Lỗi khi xử lý webhook ngân hàng:", error);
     }
 });
 
@@ -1197,21 +1299,21 @@ bot.command('addalbum', async (ctx) => {
     adminAddingAlbum.add(userId);
 
     const syntaxMsg = `
-🔥 *Pé đang lắng nghe đây!*
-Anh chạm vào khối chữ bên dưới để copy nhanh cú pháp mẫu nha:
+    🔥 *Pé đang lắng nghe đây!*
+    Anh chạm vào khối chữ bên dưới để copy nhanh cú pháp mẫu nha:
 
-\`\`\`
-- Title: Nhập tên album
-- Link: ["Link 1", "Link 2"]
-- File ID: Nhập ID file
-- Type: photo hoặc video
-- Tags: ["Masturbation", "Lesbian", "HaveSex", "BDSM", "Squirt", "Public", "Anal", "Scat"]
-- Price: 50000
-- Description: Nhập mô tả...
-\`\`\`
+    \`\`\`
+    - Title: Nhập tên album
+    - Link: ["Link 1", "Link 2"]
+    - File ID: Nhập ID file
+    - Type: photo hoặc video
+    - Tags: ["Masturbation", "Lesbian", "HaveSex", "BDSM", "Squirt", "Public", "Anal", "Scat"]
+    - Price: 50000
+    - Description: Nhập mô tả...
+    \`\`\`
 
-_(Gõ /cancel nếu anh muốn huỷ bỏ thao tác nha!)_
-`;
+    _(Gõ /cancel nếu anh muốn huỷ bỏ thao tác nha!)_
+    `;
     await ctx.reply(syntaxMsg, { parse_mode: 'Markdown' });
 });
 
@@ -1246,14 +1348,14 @@ bot.command('editalbum', async (ctx) => {
 
         const template =
             `id: ${dbAlbum.id}
-title: ${dbAlbum.title}
-link: ${linkStr}
-fileID: ${dbAlbum.fileid}
-type: ${dbAlbum.type}
-tags: ${tagsStr}
-price: ${dbAlbum.price}
-description: ${dbAlbum.description}
-is_active: ${dbAlbum.is_active}`;
+    title: ${dbAlbum.title}
+    link: ${linkStr}
+    fileID: ${dbAlbum.fileid}
+    type: ${dbAlbum.type}
+    tags: ${tagsStr}
+    price: ${dbAlbum.price}
+    description: ${dbAlbum.description}
+    is_active: ${dbAlbum.is_active}`;
 
         adminEditingAlbum.add(userId);
 
@@ -1283,12 +1385,12 @@ bot.command('searchalbum', async (ctx) => {
 
     try {
         const query = `
-            SELECT id, title 
-            FROM albums 
-            WHERE title ILIKE $1
-            ORDER BY id ASC
-            LIMIT 30
-        `;
+                SELECT id, title 
+                FROM albums 
+                WHERE title ILIKE $1
+                ORDER BY id ASC
+                LIMIT 30
+            `;
 
         const res = await pool.query(query, [`%${searchTerm}%`]);
 
@@ -1409,6 +1511,10 @@ bot.command('adduserbuy', async (ctx) => {
 
         ctxAny.deleteMessage().catch(() => { });
 
+        if (replyTo && successAlbums.length > 0) {
+            ctx.telegram.deleteMessage(ctx.chat.id, replyTo.message_id).catch(() => { });
+        }
+
         let replyMsg = `✅ <b>Đã xử lý cấp quyền sở hữu album:</b>\n\n`;
         replyMsg += `👤 Khách hàng: ${targetName}\n`;
         replyMsg += `🏷️ Username: ${username}\n`;
@@ -1490,10 +1596,10 @@ bot.on('text', async (ctx, next) => {
             const tags = JSON.parse(tagsStr);
 
             const query = `
-                UPDATE albums 
-                SET title = $1, link_album = $2, fileid = $3, type = $4, tags = $5, price = $6, description = $7, is_active = $8
-                WHERE id = $9
-            `;
+                    UPDATE albums 
+                    SET title = $1, link_album = $2, fileid = $3, type = $4, tags = $5, price = $6, description = $7, is_active = $8
+                    WHERE id = $9
+                `;
 
             await pool.query(query, [
                 title,
