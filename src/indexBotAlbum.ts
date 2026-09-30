@@ -290,7 +290,7 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
             console.error("Lỗi khi truy vấn album:", e);
         }
 
-        let albumText = latestAlbum 
+        let albumText = latestAlbum
             ? `🎥 ${latestAlbum.title || "Album không rõ"} (ID: ${latestAlbum.id})`
             : "Chưa xác định album.";
 
@@ -301,6 +301,11 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
             `🎥 Album mua: \n${albumText}`;
 
         await bot.telegram.sendMessage(GROUP_NOTI_PAYMENT, message);
+
+        const currentTxCount = await getMonthlyTransactionCount();
+        if (currentTxCount == 97) {
+            await bot.telegram.sendMessage(GROUP_NOTI_PAYMENT, "⚠️ Cảnh báo: Số lượng giao dịch tháng này đã đạt 97/100. Hãy kiểm tra và chuẩn bị cho việc reset số lượng giao dịch!");
+        }
 
     } catch (error) {
         console.error(error);
@@ -500,7 +505,9 @@ bot.action('view_vip_clip', async (ctx) => {
         if (eventRes.rows.length === 0) {
             const msg = await ctx.reply('Hiện tại pé Nyan chưa có event nào cả ❤️', {
                 reply_markup: {
-                    inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+                    inline_keyboard: [[
+                        { text: '📸 Album của pé', callback_data: 'viewAlbum' },
+                        { text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
                 }
             });
             await addSystemMessageId(userId, msg.message_id);
@@ -529,7 +536,9 @@ bot.action('view_vip_clip', async (ctx) => {
         const msg = await ctx.replyWithVideo(fileId, {
             caption: captionText,
             reply_markup: {
-                inline_keyboard: [[{ text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
+                inline_keyboard: [[
+                    { text: '📸 Album của pé', callback_data: 'viewAlbum' },
+                    { text: '🔙 Quay lại menu chính', callback_data: 'view_services' }]]
             }
         });
 
@@ -1523,7 +1532,7 @@ bot.command('adduserbuy', async (ctx) => {
         if (successAlbums.length > 0) {
             replyMsg += `🎉 <b>Thêm THÀNH CÔNG:</b>\n- ` + successAlbums.join('\n- ') + `\n\n`;
         }
-        
+
         if (failedAlbums.length > 0) {
             replyMsg += `⚠️ <b>Thêm THẤT BẠI:</b>\n- ` + failedAlbums.join('\n- ') + `\n`;
         }
