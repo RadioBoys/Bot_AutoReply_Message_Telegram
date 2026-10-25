@@ -1,4 +1,4 @@
-import { Telegraf, Context, Markup} from 'telegraf';
+import { Telegraf, Context, Markup } from 'telegraf';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -17,14 +17,14 @@ interface NyanContext extends Context {
 bot.start(async (ctx) => {
     try {
         await ctx.reply(replyMessage, replyKeyboard);
-    } catch (error) {}
+    } catch (error) { }
 });
 
-// Phản hồi khi khách gửi tin nhắn, ảnh, sticker... bất kỳ
 bot.on('message', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
     try {
         await ctx.reply(replyMessage, replyKeyboard);
-    } catch (error) {}
+    } catch (error) { }
 });
 
 bot.launch({ dropPendingUpdates: true });
