@@ -391,7 +391,7 @@ bot.start(async (ctx) => {
     const userId = ctx.from.id;
     await cleanUserChatHistory(ctx, userId);
 
-    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
+    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAgIwat2TnvcG4dSXCRoL-VS6qhM1Wz4AAikTaxsC_PBW5qdB930YczYBAAMCAAN5AAM9BA';
     const sendOptions = {
         caption: 'Hi anh. Anh mún chọn gì nè??',
         reply_markup: await getMainMenuKeyboard()
@@ -558,7 +558,7 @@ bot.action('view_services', async (ctx) => {
 
     await ctx.replyWithChatAction('upload_photo').catch(() => { });
 
-    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAx9qXyR5uOrNjEnNmj9bHDKbD8ur-QACTg9rG10v-VaO4GoYtXo8CAEAAwIAA3kAAz0E';
+    const bannerFileId = 'AgACAgUAAyEFAAMBAAE_PMoAAgIwat2TnvcG4dSXCRoL-VS6qhM1Wz4AAikTaxsC_PBW5qdB930YczYBAAMCAAN5AAM9BA';
     const sendOptions = {
         caption: 'Hi anh. Anh mún chọn gì nè??',
         reply_markup: await getMainMenuKeyboard()
@@ -623,7 +623,7 @@ bot.action(/view(.+)/, async (ctx) => {
             fileInfo = {
                 type: 'video',
                 path: './img/Album.MP4',
-                file_id: 'BAACAgUAAyEFAAMBAAE_PMoAAy1qXyeHb6sz7PLRLnWDaq2Cm_rnPQACICIAAvLg-FYZKAZwW-jtoj0E',
+                file_id: 'BAACAgUAAyEFAAMBAAE_PMoAAgIxat2TpyaLfh9_52iA3HcRpNFsBOIAAvonAAIC_PBWJOBZuXO1kb49BA',
                 text: 'Anh muốn xem thể loại album nào của bé? 👉👈',
                 keyboard: {
                     inline_keyboard: [
@@ -656,19 +656,19 @@ bot.action(/view(.+)/, async (ctx) => {
         case 'Pantsu':
             fileInfo.type = 'video';
             fileInfo.path = './img/Pantsu.MP4';
-            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAy9qXyeKMWJSDHBx4UEP1-vN8aKj6AACIiIAAvLg-FavrfbPpXrBpz0E';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAgIzat2TuLbU803yXYr-9XbxNiExvKQAAvwnAAIC_PBW0hPnUfl-NlE9BA';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi. \n\nAnh xem trong @nyanchanbikini rồi nhắn cho Nyan nhé!';
             break;
         case 'Juice':
             fileInfo.type = 'video';
             fileInfo.path = './img/Juice.MP4';
-            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAy5qXyeHYAkB_EI-MSEfuwbYA7bbEQACISIAAvLg-FaSOLdvvwOVaj0E';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAgIyat2TrCCoj3sxSG2w-e7nVUrbWF8AAvsnAAIC_PBWgMjL0Uayo5s9BA';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi.';
             break;
         case 'Sextoy':
             fileInfo.type = 'video';
             fileInfo.path = './img/Sextoy.MP4';
-            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAzBqXyeM9pX5GN5Gw5NJwtBcETR_gwACIyIAAvLg-FYsGV88tpkxyT0E';
+            fileInfo.file_id = 'BAACAgUAAyEFAAMBAAE_PMoAAgI0at2TvTKoXh-f4KE-wwKsnfLFRCgAAv0nAAIC_PBWbnvHVhW9Znw9BA';
             fileInfo.text = 'Tính năng này hiện chưa khả dụng anh iu ơi. \n\nAnh xem trong @shopsextoy2 rồi nhắn cho Nyan nhé!';
             break;
     }
