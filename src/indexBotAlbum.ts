@@ -1546,85 +1546,99 @@ bot.command('adduserbuy', async (ctx) => {
 });
 
 bot.command('broadcast', async (ctx) => {
-    const ctxAny = ctx as any;
-    const adminId = ctxAny.from?.id;
-
-    // Giới hạn quyền chỉ Admin mới được dùng lệnh[cite: 5]
+    const adminId = ctx.from?.id;
     if (!adminId || !ADMIN_IDS.includes(adminId)) return;
 
-    // Lấy nội dung template phía sau lệnh /broadcast
-    const rawTemplate = (ctxAny.payload || '').trim();
+    const text = (ctx.message as any)?.text || '';
+    const rawTemplate = text.replace(/^\/broadcast(@\w+)?\s*/i, '').trim();
+
     if (!rawTemplate) {
         return ctx.reply(
             '⚠️ <b>Thiếu nội dung thông báo!</b>\n\n' +
-            '👉 Nhập cú pháp: <code>/broadcast [Nội dung của ông]</code>\n' +
-            '💡 Mẹo: Dùng <code>{name}</code> ở nơi ông muốn chèn tên khách.\n\n' +
-            '<i>Ví dụ:</i>\n' +
-            '<code>/broadcast Anh iu {name} ơi, Em có sản phẩm mới nè ❤️</code>',
+            '👉 Cú pháp: <code>/broadcast [Nội dung thông báo]</code>\n' +
+            '💡 Dùng <code>{name}</code> ở nơi muốn chèn tên khách.',
             { parse_mode: 'HTML' }
         );
     }
 
     try {
-        // Lấy danh sách user_id và full_name từ database[cite: 23, 37]
         const res = await pool.query('SELECT user_id, full_name FROM users_data');
         const users = res.rows;
 
         if (users.length === 0) {
-            return ctx.reply('⚠️ Chưa có dữ liệu người dùng nào trong database!');
+            return ctx.reply('⚠️ Chưa có người dùng nào trong database!');
         }
 
-        await ctx.reply(`⏳ Đang bắt đầu gửi thông báo cho ${users.length} người dùng...`);
+        const notifyMsg = await ctx.reply(`⏳ Đang chạy ngầm gửi thông báo cho <b>${users.length}</b> người dùng...`, { parse_mode: 'HTML' });
 
-        let successCount = 0;
-        let failCount = 0;
+        // Tách luồng chạy nền độc lập để không chặn tiến trình chính của Bot
+        (async () => {
+            let successCount = 0;
+            let failCount = 0;
+            let batchCounter = 0;
 
-        for (const user of users) {
-            try {
-                // Xử lý tên hiển thị
-                let displayName = (user.full_name || '').trim() || 'anh';
+            for (const user of users) {
+                try {
+                    let displayName = (user.full_name || '').trim() || 'anh';
+                    displayName = displayName
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
 
-                // Escape ký tự HTML để tránh lỗi format cú pháp nếu tên user có chứa ký tự đặc biệt
-                displayName = displayName
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;');
+                    const broadcastText = rawTemplate.replace(/\{name\}/g, `<b>${displayName}</b>`);
 
-                // Thay thế thẻ {name} bằng tên của user (thay thế toàn bộ {name} nếu có nhiều chỗ)
-                const broadcastText = rawTemplate.replace(/\{name\}/g, `<b>${displayName}</b>`);
+                    const sentMsg = await ctx.telegram.sendMessage(user.user_id, broadcastText, {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'Menu', url: 'https://t.me/NyxumeiBot?start=1' }]
+                            ]
+                        }
+                    });
 
-                const sentMsg = await ctx.telegram.sendMessage(user.user_id, broadcastText, {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: 'Menu', url: 'https://t.me/NyxumeiBot?start=1' }]
-                        ]
+                    if (typeof addSystemMessageId === 'function') {
+                        await addSystemMessageId(Number(user.user_id), sentMsg.message_id);
                     }
-                });
 
-                // Lưu message_id để tự dọn dẹp khi user bấm tương tác menu[cite: 37]
-                if (typeof addSystemMessageId === 'function') {
-                    await addSystemMessageId(Number(user.user_id), sentMsg.message_id);
+                    successCount++;
+                } catch (err: any) {
+                    failCount++;
+                    // Nếu Telegram trả mã lỗi 429 (Bị giới hạn tốc độ), nghỉ đúng số giây Telegram yêu cầu
+                    if (err?.response?.error_code === 429) {
+                        const retryAfter = err?.response?.parameters?.retry_after || 5;
+                        await new Promise(r => setTimeout(r, retryAfter * 1000));
+                    }
                 }
 
-                successCount++;
-            } catch (err) {
-                // User đã chặn bot hoặc xóa tài khoản
-                failCount++;
+                batchCounter++;
+                // Cứ gửi được 25 tin nhắn thì cho bot nghỉ 1.5 giây để giải tỏa băng thông kết nối
+                if (batchCounter >= 25) {
+                    batchCounter = 0;
+                    await new Promise(r => setTimeout(r, 1500));
+                } else {
+                    // Giãn cách an toàn 60ms giữa mỗi tin nhắn
+                    await new Promise(r => setTimeout(r, 60));
+                }
             }
 
-            // Khoảng nghỉ 50ms giữa mỗi tin nhắn tránh Telegram chặn Rate Limit
-            await new Promise(resolve => setTimeout(resolve, 50));
-        }
-
-        await ctx.reply(`✅ <b>Đã gửi thông báo hoàn tất!</b>\n\n- Thành công: ${successCount}\n- Thất bại (đã chặn bot): ${failCount}`, { parse_mode: 'HTML' });
+            // Gửi báo cáo kết quả về cho Admin khi hoàn tất
+            await ctx.telegram.sendMessage(
+                adminId,
+                `✅ <b>Hoàn tất chiến dịch thông báo!</b>\n\n` +
+                `- Tổng số khách: ${users.length}\n` +
+                `- Gửi thành công: ${successCount}\n` +
+                `- Thất bại (đã chặn bot/lỗi): ${failCount}`,
+                { parse_mode: 'HTML' }
+            );
+        })().catch(err => {
+            console.error('Lỗi khi chạy ngầm broadcast:', err);
+        });
 
     } catch (error) {
-        console.error('Lỗi khi broadcast thông báo:', error);
-        ctx.reply('❌ Có lỗi xảy ra khi truy xuất Database.');
+        console.error('Lỗi khi truy xuất Database:', error);
+        ctx.reply('❌ Có lỗi xảy ra khi đọc danh sách khách hàng.');
     }
 });
-
 
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
