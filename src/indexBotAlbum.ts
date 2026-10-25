@@ -1769,7 +1769,7 @@ bot.command('broadcast', async (ctx) => {
                     parse_mode: 'HTML',
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: 'Menu', callback_data: 'view_services' }]
+                            [{ text: 'Menu', url: 'https://t.me/NyxumeiBot?start=1' }]
                         ]
                     }
                 });
