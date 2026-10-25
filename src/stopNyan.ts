@@ -39,14 +39,6 @@ bot.start(async (ctx) => {
         await ctx.reply(replyMessage, replyKeyboard);
     } catch (error) { }
 });
-
-bot.on('message', async (ctx) => {
-    if (ctx.chat?.type !== 'private') return;
-    try {
-        await ctx.reply(replyMessage, replyKeyboard);
-    } catch (error) { }
-});
-
 bot.command('broadcast', async (ctx) => {
     const ctxAny = ctx as any;
     const adminId = ctxAny.from?.id;
@@ -126,6 +118,15 @@ bot.command('broadcast', async (ctx) => {
         ctx.reply('❌ Có lỗi xảy ra khi truy xuất Database.');
     }
 });
+
+bot.on('message', async (ctx) => {
+    if (ctx.chat?.type !== 'private') return;
+    try {
+        await ctx.reply(replyMessage, replyKeyboard);
+    } catch (error) { }
+});
+
+
 
 bot.launch({ dropPendingUpdates: true });
 console.log("Bot NyanChan (thông báo ngưng hoạt động) đã lên sóng!");
