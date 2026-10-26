@@ -377,7 +377,7 @@ async function getMainMenuKeyboard() {
             [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
             [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
             [{ text: vipButtonText, callback_data: 'view_vip_clip' }],
-            [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyansexdoll' }]
+            [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyxumei' }]
         ]
     };
 }
