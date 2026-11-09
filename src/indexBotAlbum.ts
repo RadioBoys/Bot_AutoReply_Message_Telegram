@@ -312,25 +312,6 @@ async function sendPurchaseReportToAdmin(customerId: number, defaultName: string
     }
 }
 
-async function processLuckyVoucher(userId: number, albumId: number, albumPrice: number): Promise<{amount: number, percent: number}> {
-    try {
-        const res = await pool.query('SELECT discount_percent FROM lucky_vouchers WHERE user_id = $1 AND album_id = $2 AND is_used = false', [userId, albumId]);
-        if (res.rows.length > 0) {
-            const discount = Number(res.rows[0].discount_percent);
-            const cashback = Math.floor((albumPrice * discount) / 100);
-            
-            // Đánh dấu đã dùng và cộng tiền hoàn vào ví
-            await pool.query('UPDATE lucky_vouchers SET is_used = true WHERE user_id = $1 AND album_id = $2', [userId, albumId]);
-            await updateUserBalance(userId, cashback);
-            
-            return { amount: cashback, percent: discount };
-        }
-    } catch (e) {
-        console.error("Lỗi process voucher:", e);
-    }
-    return { amount: 0, percent: 0 };
-}
-
 async function addUserToDatabase(userId: number, fullName: string, username: string) {
     try {
         const query = `
@@ -395,7 +376,6 @@ async function getMainMenuKeyboard() {
             [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
             [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
             [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
-            [{ text: '🎡 Vòng quay may mắn (Cashback)', callback_data: 'lucky_wheel_info' }],
             [{ text: vipButtonText, callback_data: 'view_vip_clip' }],
             [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyxumei' }]
         ]
@@ -423,67 +403,6 @@ bot.start(async (ctx) => {
     } catch (error) {
         const msg = await ctx.replyWithPhoto({ source: './img/Banner.jpg' }, sendOptions);
         await addSystemMessageId(userId, msg.message_id);
-    }
-});
-
-// Giải thích luật chơi khi bấm từ Menu chính
-bot.action('lucky_wheel_info', async (ctx) => {
-    try { await ctx.answerCbQuery(); } catch (e) {}
-    const msg = await ctx.reply("🎡 <b>VÒNG QUAY MAY MẮN</b>\n\nTính năng này áp dụng riêng cho từng Album!\n👉 Anh hãy vào <b>📸 Album của pé</b>, chọn album ưng ý rồi bấm nút <b>🎡 Quay Voucher giảm giá</b> ở dưới album đó nha.\n\n<i>*Tiền giảm giá sẽ được hoàn thẳng vào số dư ví của anh sau khi thanh toán thành công!</i>", { parse_mode: 'HTML' });
-    if (ctx.from?.id) await addSystemMessageId(ctx.from.id, msg.message_id);
-});
-
-// Logic quay Gacha cho từng Album
-bot.action(/spin_album_(.+)/, async (ctx) => {
-    try { await ctx.answerCbQuery(); } catch (e) { }
-    const userId = ctx.from?.id;
-    const albumId = parseInt(ctx.match[1] as string);
-    if (!userId || isNaN(albumId)) return;
-
-    try {
-        // 1. Check xem đã mua album này chưa
-        const checkPurchased = await pool.query('SELECT 1 FROM users_purchased WHERE user_id = $1 AND album_id = $2', [userId, albumId]);
-        if (checkPurchased.rowCount && checkPurchased.rowCount > 0) {
-            const msg = await ctx.reply("❌ Album này anh đã mua rồi, không thể quay voucher được nữa nha anh iu!");
-            await addSystemMessageId(userId, msg.message_id);
-            return;
-        }
-
-        // 2. Check xem đã quay voucher cho album này chưa
-        const checkVoucher = await pool.query('SELECT discount_percent, is_used FROM lucky_vouchers WHERE user_id = $1 AND album_id = $2', [userId, albumId]);
-        
-        if (checkVoucher.rowCount && checkVoucher.rowCount > 0) {
-            const vData = checkVoucher.rows[0];
-            if (vData.is_used) {
-                const msg = await ctx.reply(`⚠️ Anh đã sử dụng Voucher giảm ${vData.discount_percent}% này rồi!`);
-                await addSystemMessageId(userId, msg.message_id);
-            } else {
-                const msg = await ctx.reply(`🎁 Anh đã quay rồi mà! Voucher hiện tại của anh cho album này là giảm <b>${vData.discount_percent}%</b>. Hãy mua album để được hoàn tiền nhé!`, { parse_mode: 'HTML' });
-                await addSystemMessageId(userId, msg.message_id);
-            }
-            return;
-        }
-
-        // 3. Logic Random Tỉ lệ (90% ra 10-20 | 10% ra 30-40-50)
-        const rand = Math.random() * 100;
-        let discount = 10;
-        if (rand <= 45) discount = 10;
-        else if (rand <= 90) discount = 20;
-        else if (rand <= 95) discount = 30; // 5%
-        else if (rand <= 98) discount = 40; // 3%
-        else discount = 50;                 // 2%
-
-        // 4. Lưu vào Database
-        await pool.query(
-            'INSERT INTO lucky_vouchers (user_id, album_id, discount_percent) VALUES ($1, $2, $3)',
-            [userId, albumId, discount]
-        );
-
-        const msg = await ctx.reply(`🎉 <b>CHÚC MỪNG ANH IU!</b>\n\nAnh đã quay trúng Voucher giảm <b>${discount}%</b> cho album này!\n💰 Mua ngay đi anh, số dư giảm giá sẽ được hoàn thẳng vào ví của anh sau khi thanh toán thành công nè ~ ❤️`, { parse_mode: 'HTML' });
-        await addSystemMessageId(userId, msg.message_id);
-
-    } catch (e) {
-        console.error(e);
     }
 });
 
@@ -852,8 +771,7 @@ bot.action(/tag_([^_]+)(?:_(\d+))?/, async (ctx) => {
             `💰 *Price:* ${album.price}`;
 
         const inlineKeyboard: any[][] = [
-            [{ text: `🛒 Mua album này , Giá: ${album.price} ❤️`, callback_data: `buy_album_${album.id}` }],
-            [{ text: `🎡 Quay Voucher giảm giá`, callback_data: `spin_album_${album.id}` }]
+            [{ text: `🛒 Mua album này , Giá: ${album.price} ❤️`, callback_data: `buy_album_${album.id}` }]
         ];
 
         if (isLastItemOnPage) {
@@ -989,16 +907,10 @@ bot.action(/buy_album_(.+)/, async (ctx) => {
         const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
         const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-        // -- CHÈN ĐOẠN NÀY --
-        const cashbackData = await processLuckyVoucher(chatId, albumId, albumPriceNum);
-        let cashbackText = cashbackData.amount > 0 ? `\n🎁 <b>Hoàn tiền Vòng Quay (${cashbackData.percent}%):</b> +${cashbackData.amount.toLocaleString()}đ vào ví!` : '';
-        // -------------------
-
         const successMsg = await ctx.reply(
             `🎉 <b>MUA THÀNH CÔNG BẰNG VÍ SỐ DƯ!</b> \n\n` +
             `Số dư ví của anh đã tự động khấu trừ ${albumPriceNum.toLocaleString()}đ.\n` +
-            `💳 Số dư hiện tại còn lại: <b>${(remainingBalance + cashbackData.amount).toLocaleString()}đ</b>.\n` +
-            cashbackText + `\n\n` +
+            `💳 Số dư hiện tại còn lại: <b>${remainingBalance.toLocaleString()}đ</b>.\n\n` +
             `🎁 <b>Link Album của anh đây ạ:</b>\n` +
             `💿 Album: <b>${targetAlbum.title}</b>\n` +
             `🔗 Link 1: ${link1Text}\n` +
@@ -1149,19 +1061,13 @@ app.post('/webhook/bank', async (req, res) => {
                     const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
                     const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-                    // -- CHÈN ĐOẠN NÀY --
-                    const cashbackData = await processLuckyVoucher(customerChatId, targetAlbumId, albumPrice);
-                    let cashbackText = cashbackData.amount > 0 ? `\n🎁 <b>Hoàn tiền Vòng Quay (${cashbackData.percent}%):</b> +${cashbackData.amount.toLocaleString()}đ vào ví!` : '';
-                    // -------------------
-
                     try {
                         const successMsg = await bot.telegram.sendMessage(customerChatId,
                             `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
                             `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
                             `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
                             `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
-                            `💳 Số dư ví tích lũy còn lại: <b>${(remainingBalance + cashbackData.amount).toLocaleString()}đ</b> \n` +
-                            cashbackText + `\n\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
                             `🎁 <b>Link Album của anh đây ạ:</b>\n` +
                             `💿 Album: <b>${targetAlbum.title}</b>\n` +
                             `🔗 Link 1: ${link1Text}\n` +
@@ -1277,19 +1183,13 @@ app.post('/webhook/bank', async (req, res) => {
                     const link1Text = link1Raw ? link1Raw : "Link này pé chưa cập nhật";
                     const link2Text = link2Raw ? link2Raw : "Link này pé chưa cập nhật";
 
-                    // -- CHÈN ĐOẠN NÀY --
-                    const cashbackData = await processLuckyVoucher(customerChatId, targetAlbumId, albumPrice);
-                    let cashbackText = cashbackData.amount > 0 ? `\n🎁 <b>Hoàn tiền Vòng Quay (${cashbackData.percent}%):</b> +${cashbackData.amount.toLocaleString()}đ vào ví!` : '';
-                    // -------------------
-
                     try {
                         const successMsg = await bot.telegram.sendMessage(customerChatId,
                             `🎉 <b>Thanh toán thành công!</b> Pé đã nhận được tiền rồi ạ. \n\n` +
                             `ℹ️ Mã hóa đơn: <code>${orderCode}</code>\n` +
                             `💰 Giá trị album: ${albumPrice.toLocaleString()}đ\n` +
                             `📥 Số tiền anh vừa nạp: ${actualPaid.toLocaleString()}đ\n` +
-                            `💳 Số dư ví tích lũy còn lại: <b>${(remainingBalance + cashbackData.amount).toLocaleString()}đ</b> \n` +
-                            cashbackText + `\n\n` +
+                            `💳 Số dư ví tích lũy còn lại: <b>${remainingBalance.toLocaleString()}đ</b> \n\n` +
                             `🎁 <b>Link Album của anh đây ạ:</b>\n` +
                             `💿 Album: <b>${targetAlbum.title}</b>\n` +
                             `🔗 Link 1: ${link1Text}\n` +
