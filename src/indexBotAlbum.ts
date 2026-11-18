@@ -353,11 +353,11 @@ async function getMainMenuKeyboard() {
     return {
         inline_keyboard: [
             [{ text: '📸 Album của pé', callback_data: 'viewAlbum' }],
-            [{ text: '👙 Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
-            [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
-            [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
+            // [{ text: '👙 Qlot áo ngực đã mặc', callback_data: 'viewPantsu' }],
+            // [{ text: 'Nước tiểu, nước lồn của pé', callback_data: 'viewJuice' }],
+            // [{ text: 'Shop Sextoy', callback_data: 'viewSextoy' }],
             [{ text: '💳 Kiểm tra Số dư Ví', callback_data: 'check_balance' }],
-            [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
+            // [{ text: '✨ TOP FAN TRONG THÁNG ✨', callback_data: 'view_top_fans' }],
             [{ text: vipButtonText, callback_data: 'view_vip_clip' }],
             [{ text: '💬 Chat riêng với Pé về các vấn đề khác ^^', url: 'https://t.me/nyxumei' }]
         ]
